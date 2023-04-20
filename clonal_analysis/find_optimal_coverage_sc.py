@@ -46,13 +46,16 @@ for sample in os.listdir(path_sc_results):
 
         os.chdir(os.path.join(path_sc_results, sample))
         df_combos = pd.read_csv(
-            os.path.join(path_sc_results, sample, 'CBC_GBC_combos.tsv.gz'), index_col=0)
+            os.path.join(path_sc_results, sample, 'CBC_GBC_combos.tsv.gz'), 
+            index_col=0, 
+            sep='\t'
+        )
 
         L = []
         for t in tresholds:
             _, assigned_cells = cell_assignment(df_combos, t)
             L.append(len(assigned_cells))
-        optimal_t = np.argmax(L)
+        optimal_t = tresholds[np.argmax(L)]
         df_combos, uniquely_assigned_cells = cell_assignment(df_combos, optimal_t)
 
         # Cell assignment plot
