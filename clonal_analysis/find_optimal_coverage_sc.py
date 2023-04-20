@@ -42,7 +42,7 @@ tresholds = [5, 10, 15, 20, 30, 40, 50, 75]
 # Here we go
 for sample in os.listdir(path_sc_results):
 
-    if not sample.contains('.DS_'):
+    if not sample.startswith('.DS_'):
 
         os.chdir(os.path.join(path_sc_results, sample))
         df_combos = pd.read_csv(
@@ -82,7 +82,7 @@ for sample in os.listdir(path_sc_results):
         # Assert we have taken the correct ones and save
         assert df_cells.index.size == uniquely_assigned_cells.size
         df_cells.to_csv(os.path.join(path_sc_results, sample, 'cells_summary_table_refined.csv'))
-    
+
         # Compute summary tables: clones
         df_clones = df_cells.reset_index().groupby('GBC').size().to_frame('n_cells')
         df_clones['prevalence'] = df_clones['n_cells'] / df_clones['n_cells'].sum()
