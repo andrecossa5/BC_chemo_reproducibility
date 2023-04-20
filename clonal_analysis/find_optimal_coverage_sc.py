@@ -37,7 +37,7 @@ def cell_assignment(df, t):
 
 # Path
 path_sc_results = sys.argv[1]
-tresholds = [5, 10, 15, 20, 30, 40, 50, 75]
+tresholds = np.arange(5, 100, 5)
 
 # Here we go
 for sample in os.listdir(path_sc_results):
