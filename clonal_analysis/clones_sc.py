@@ -7,45 +7,7 @@ import sys
 import numpy as np
 import pandas as pd
 import scanpy as sc
-import matplotlib.pyplot as plt
-import circlify
-
-
-##
-
-
-def packed_circle_plot(df, covariate=None, ax=None, color='b', annotate=False):
-    """
-    Circle plot. Packed.
-    """
-
-    circles = circlify.circlify(
-        df[covariate].tolist(), 
-        show_enclosure=True, 
-        target_enclosure=circlify.Circle(x=0, y=0, r=1)
-    )
-
-    lim = max(
-        max(
-            abs(c.x) + c.r,
-            abs(c.y) + c.r,
-        )
-        for c in circles
-    )
-    ax.set_xlim(-lim, lim)
-    ax.set_ylim(-lim, lim)
-
-    for name, circle in zip(df.index, circles):
-        x, y, r = circle
-        ax.add_patch(
-            plt.Circle((x, y), r*0.95, alpha=0.4, linewidth=1, 
-                fill=True, edgecolor="black", facecolor=color)
-        )
-        if annotate:
-            ax.annotate(name, (x,y), va='center', ha='center', fontsize=4)
-    ax.axis('off')
-
-    return ax
+from BC_chemo_utils.plotting import *
 
 
 ##
@@ -55,10 +17,6 @@ def packed_circle_plot(df, covariate=None, ax=None, color='b', annotate=False):
 path_main = sys.argv[1]
 path_data = os.path.join(path_main, 'data')
 path_results = os.path.join(path_main, 'results/clonal_sc')
-
-
-##
-
 
 # Read and format QC matrix all samples, meta already formatted
 adata = sc.read(os.path.join(path_data, 'QC.h5ad'))
@@ -150,7 +108,7 @@ for infection in adata.obs['infection'].unique():
         df_promet.to_excel(os.path.join(path_dataset, f'df_promet.xlsx'))
 
         # Report
-        with open(os.path.join(path_results, f'report_{infection}.txt'), 'w') as f:
+        with open(os.path.join(path_results, f'report_{infection}.txt'), 'a') as f:
             f.write(f'# Dataset {dataset} pro-metastatic clones: {df_promet.shape[0]}\n')
 
         # Plot promets and PT clones
@@ -169,9 +127,3 @@ for infection in adata.obs['infection'].unique():
         )
         ax.set(title=f'Dataset {dataset}: PT clones')
         fig.savefig(path_dataset, 'PT_circles.png')
-
-
-
-
-
-
