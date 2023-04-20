@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 """
 Script to produce pro-metastatic clones summary and visualizations
 """
