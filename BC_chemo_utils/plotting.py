@@ -32,8 +32,8 @@ def packed_circle_plot(df, covariate=None, ax=None, color='b', annotate=False):
     for name, circle in zip(df.index, circles):
         x, y, r = circle
         ax.add_patch(
-            plt.Circle((x, y), r*0.95, alpha=0.4, linewidth=1, 
-                fill=True, edgecolor="black", facecolor=color)
+            plt.Circle((x, y), r*0.95, alpha=0.5, linewidth=1.2, 
+                fill=True, edgecolor=color, facecolor=color)
         )
         if annotate:
             ax.annotate(name, (x,y), va='center', ha='center', fontsize=4)
