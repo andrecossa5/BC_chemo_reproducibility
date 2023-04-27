@@ -14,11 +14,10 @@ def packed_circle_plot(df, covariate=None, ax=None, color='b', annotate=False):
     Circle plot. Packed.
     """
     circles = circlify.circlify(
-        df[covariate].tolist(), 
+        df[covariate].to_list(), 
         show_enclosure=True, 
         target_enclosure=circlify.Circle(x=0, y=0, r=1)
     )
-
     lim = max(
         max(
             abs(c.x) + c.r,
@@ -29,7 +28,7 @@ def packed_circle_plot(df, covariate=None, ax=None, color='b', annotate=False):
     ax.set_xlim(-lim, lim)
     ax.set_ylim(-lim, lim)
 
-    for name, circle in zip(df.index, circles):
+    for name, circle in zip(df.index[::-1], circles): # Don't know why, but it reverses...
         x, y, r = circle
         ax.add_patch(
             plt.Circle((x, y), r*0.95, alpha=0.5, linewidth=1.2, 

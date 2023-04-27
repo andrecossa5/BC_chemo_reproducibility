@@ -5,8 +5,7 @@ Script to produce pro-metastatic clones summary and visualizations
 import os
 import numpy as np
 import pandas as pd
-import scanpy as sc
-from Cellula._utils import *
+from Cellula._utils import make_folder
 from BC_chemo_utils.plotting import *
 
 
