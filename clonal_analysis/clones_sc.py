@@ -1,11 +1,8 @@
-#!/usr/bin/python
-
 """
 Script to produce pro-metastatic clones summary and visualizations
 """
 
 import os
-import sys
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -16,22 +13,19 @@ from BC_chemo_utils.plotting import *
 
 
 # Paths
-path_main = sys.argv[1]
-path_data = os.path.join(path_main, 'data')
-path_results = os.path.join(path_main, 'results/clonal_sc')
+path_main = '/Users/IEO5505/Desktop/BC_chemo_reproducibility/'
 
-# Read and format QC matrix all samples, meta already formatted
-adata = sc.read(os.path.join(path_data, 'QC.h5ad'))
-df = adata.obs
-df['GBC'] = df['GBC'].astype('str') # Avoid pd.Categorical troubles...
-df['sample'] = df['sample'].astype('str')
+# Read cells meta
+df = pd.read_csv(os.path.join(path_main, 'meta', 'cells_meta.csv'), index_col=0)
 
 
 ##
 
 
 # Here we go
-for infection in adata.obs['infection'].unique():
+for infection in df['infection'].unique():
+
+    pass
 
     # GBC_sample aggregate, per infection
     df_ = df.query('infection == @infection')
@@ -46,9 +40,10 @@ for infection in adata.obs['infection'].unique():
             .reset_index(drop=True)
         )
         .pivot(index='GBC', columns='sample')
+        .fillna(0)
     )
     df_gbc_sample.to_excel(
-        os.path.join(path_results, f'df_gbc_sample_infection_{infection}.xlsx')
+        os.path.join(path_main, 're', f'df_gbc_sample_infection_{infection}.xlsx')
     )
 
     # GBC_sample occurrences, per infection

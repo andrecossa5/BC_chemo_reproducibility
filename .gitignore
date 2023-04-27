@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# All results and meta
+./results/*
+./data/*
 
 # .DS_Store
 ./.DS_Store
