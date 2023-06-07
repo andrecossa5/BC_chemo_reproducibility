@@ -23,23 +23,6 @@ from Cellula.plotting._plotting import *
 matplotlib.use('macOSX')
 
 
-#
-
-
-# Utils
-def remove_unwanted(a):
-    
-    mt = set(a.var_names[a.var_names.str.startswith('MT-')])
-    ribo_1 = set(a.var_names[a.var_names.str.startswith('RPL')])
-    ribo_2 = set(a.var_names[a.var_names.str.startswith('RPS')])
-    anti_1 = set(a.var_names[a.var_names.str.contains('-AS')])
-    anti_2 = set(a.var_names[a.var_names.str.startswith('AC0')])
-    to_exclude = mt | ribo_1 | ribo_2 | anti_1 | anti_2
-    a = a[:, ~a.var_names.isin(to_exclude)].copy()
-    
-    return a
-
-
 ##
 
 
@@ -133,10 +116,10 @@ a = AnnData(
 )
 a.raw = a.copy()
 
-# Seq run integration 5000 hvgs, auto pcs, Harmony, 30 k, 1 res, FA_diff.
+# Seq run integration 5000 hvgs, auto pcs, Harmony, 15 k, 1 res, UMAP.
 _, reduced = standard_pp_recipe(a, n_HVGs=5000)
 reduced = remove_unwanted(reduced)
-d_pca = pca(reduced, layer='scaled', n_pcs=50)
+d_pca = pca(reduced, layer='scaled', auto=True, GSEA=False)
 reduced.obsm['scaled|original|X_pca'] = d_pca['X_pca']
 compute_Harmony(reduced, categorical='seq_run')                                 # Harmony data int
 compute_kNN(reduced, layer='scaled', int_method='Harmony', k=15)
@@ -183,7 +166,15 @@ fig.savefig(
     ), 
     dpi=500
 )
-# plt.show()
+
+# Save for future use
+_.obsm['X_pca'] = d_pca['X_pca']
+_.obsm['X_umap'] = df.loc[:, ['UMAP1', 'UMAP2']].values
+_.obsm['X_harmony'] = reduced.obsm['scaled|Harmony|X_corrected']
+_.obs['leiden'] = df['leiden']
+_.obsp = reduced.obsp
+_.layers['raw'] = a[:, _.var_names].X.A
+_.write(os.path.join(path_data, 'subsampled_with_embs.h5ad'))
 
 
 ##
