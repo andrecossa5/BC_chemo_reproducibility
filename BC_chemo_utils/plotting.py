@@ -58,14 +58,14 @@ def packed_circle_plot(df, covariate=None, ax=None, color='b', annotate=False):
 ##
 
 
-def consensus_volcano(results=None, L=None, pattern=None, t=0.5, xlim=(-1,1),
-                    figsize=(7,7), return_df=True):
+def consensus_volcano(results=None, L=None, df=None, pattern=None, t=0.5, xlim=(-1,1),
+                    figsize=(7,7), return_df=True, n=None):
     """
     Create a consensus volcano plot.
     """
     
     # Df
-    if L is None:
+    if L is None and df is None:
         L = []
         for k in results.results:
             k_list = k.split('|')
@@ -73,19 +73,24 @@ def consensus_volcano(results=None, L=None, pattern=None, t=0.5, xlim=(-1,1),
                 df_ = results.results[k]['df'].query('comparison == "g0_vs_g1"')
                 df_.loc[:, 'comparison'] = '_'.join([k_list[0], 'vs_rest'])
                 L.append(df_)
+        n = len(L)
+                
+    elif df is None:
+        
+        df = (
+            pd.concat(L, axis=0).reset_index()
+            .rename(columns={'index':'gene'})
+            .groupby('gene')['effect_size', 'evidence']
+            .mean()
+            .sort_values(by='effect_size', ascending=False)   
+            .assign(to_annotate_positive=lambda x: (x['effect_size']>=t) & (x['evidence']<=0.1))
+            .assign(to_annotate_negative=lambda x: (x['effect_size']<=-t) & (x['evidence']<=0.1))
+        )
+        df['log_evidence'] = -np.log10(df['evidence']+0.00000001)
+        n = len(L)
+        
     else:
         pass
-        
-    df = (
-        pd.concat(L, axis=0).reset_index()
-        .rename(columns={'index':'gene'})
-        .groupby('gene')['effect_size', 'evidence']
-        .mean()
-        .sort_values(by='effect_size', ascending=False)   
-        .assign(to_annotate_positive=lambda x: (x['effect_size']>=t) & (x['evidence']<=0.1))
-        .assign(to_annotate_negative=lambda x: (x['effect_size']<=-t) & (x['evidence']<=0.1))
-    )
-    df['log_evidence'] = -np.log10(df['evidence']+0.00000001)
 
     # Fig
     fig, ax = plt.subplots(figsize=figsize)
@@ -106,7 +111,7 @@ def consensus_volcano(results=None, L=None, pattern=None, t=0.5, xlim=(-1,1),
     ax.hlines(-np.log10(0.1), -1, 1, linestyles='dashed', colors='k')
     ax.set(xlim=xlim)
     format_ax(ax, title=f'Consensus {pattern}' if pattern is not None else f'Consensus', 
-            xlabel=f'Mean (n={len(L)}) log2FC', ylabel=f'-log10(Mean (n={len(L)}) FDR)')
+            xlabel=f'Mean (n={n}) log2FC', ylabel=f'-log10(Mean (n={n}) FDR)')
 
     ta.allocate_text(
         fig, ax, 
