@@ -9,7 +9,7 @@ import pickle
 import numpy as np
 import pandas as pd
 import textalloc as ta
-from BC_chemo_utils.plotting import *
+from plotting_utils
 matplotlib.use('macOSX')
 
 

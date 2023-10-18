@@ -4,6 +4,9 @@ Test functions.
 
 import numpy as np
 import pandas as pd
+from scipy.special import binom
+from scipy.stats import fisher_exact
+from statsmodels.sandbox.stats.multicomp import multipletests
 
 
 #
@@ -71,3 +74,55 @@ def test_promet(df_, df_promet, dataset):
         assert PT == (n_clone_PT / n_PT)
         assert lung == (n_clone_lung / n_lung)
         assert met == (lung / PT)       
+
+
+##
+
+
+def compute_enrichment(df, col1, col2, target):
+    """
+    Compute -log10(FDR) Fisher's exact test: col1 enrichment towards col2 target category.
+    """
+
+    n = df.shape[0]
+    groups = np.sort(df[col1].unique())
+
+    target_ratio_array = np.zeros(groups.size)
+    oddsratio_array = np.zeros(groups.size)
+    pvals = np.zeros(groups.size)
+
+    # Here we go
+    for i, g in enumerate(groups):
+
+        test_group = df[col1] == g
+        test_target = df[col2] == target
+
+        group_size = test_group.sum()
+        group_target_size = (test_group & test_target).sum()
+        target_ratio = group_target_size / group_size
+        target_ratio_array[i] = target_ratio
+        other_groups_state_size = (~test_group & test_target).sum()
+
+        # Fisher
+        oddsratio, pvalue = fisher_exact(
+            [
+                [group_target_size, group_size - group_target_size],
+                [other_groups_state_size, n - other_groups_state_size],
+            ],
+            alternative='greater',
+        )
+        oddsratio_array[i] = oddsratio
+        pvals[i] = pvalue
+
+    # Correct pvals --> FDR
+    pvals = multipletests(pvals, alpha=0.05, method="fdr_bh")[1]
+
+    # Results
+    results = pd.DataFrame({
+        'perc_in_target' : target_ratio_array,
+        'odds_ratio' : oddsratio_array,
+        'FDR' : pvals,
+        'enrichment' : -np.log10(pvals) 
+    }).sort_values('enrichment', ascending=False)
+
+    return results

@@ -6,8 +6,8 @@ import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from circlify import _bubbles, circlify, Circle
-from Cellula.plotting._plotting_base import *
+from circlify import circlify, Circle
+from plotting_utils._plotting_base import *
 
 
 #
