@@ -4,6 +4,8 @@ Test functions.
 
 import numpy as np
 import pandas as pd
+from gseapy import prerank
+from joblib import cpu_count
 from scipy.special import binom
 from scipy.stats import fisher_exact
 from statsmodels.sandbox.stats.multicomp import multipletests
@@ -126,3 +128,38 @@ def compute_enrichment(df, col1, col2, target):
     }).sort_values('enrichment', ascending=False)
 
     return results
+
+
+##
+
+
+def fastGSEA(s, collection='GO_Biological_Process_2021', n_top=50):
+    """
+    Quick GSEA with gseapy.
+    """
+
+    results = prerank(
+        rnk=s,
+        gene_sets=[collection],
+        threads=cpu_count(),
+        min_size=15,
+        max_size=500,
+        permutation_num=200, 
+        outdir=None, 
+        seed=1234,
+        verbose=True,
+    )
+
+    filtered_df = (
+        results.res2d.loc[:, [ 'Term', 'ES', 'NES', 'FDR q-val', 'Lead_genes' ]]
+        .rename(columns={'FDR q-val' : 'p_adjusted'})
+        .query('p_adjusted<=.1')
+        .sort_values('NES', ascending=False)
+        .iloc[:n_top, :]
+    )
+    pd.options.mode.chained_assignment = None # Remove warning
+    new_term = filtered_df['Term'].map(lambda x: x.split('__')[1])
+    filtered_df.loc[:, 'Term'] = new_term
+    filtered_df = filtered_df.set_index('Term')
+
+    return filtered_df
