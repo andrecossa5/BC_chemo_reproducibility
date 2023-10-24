@@ -151,24 +151,25 @@ df_pseudo <- aggregate_data(filtered_sce, assay='raw', group_by='group',
                             cont_covariates=c('nUMIs', 'mito_perc', 'G1.S', 'G2.M'),
                             cat_covariates=c('seq_run', 'condition', 'dataset', 'origin'))
 
-# Psudobulk DE with edgeR
+# Pseudobulk DE with edgeR
 df_pseudo[,1:10] %>% head()
 df_pseudo %>% dim()
 
 # Here we go
 
-# Model specification ~ 0 + branch_origin + confounders
+# Model specification: ~ 0 + branch_origin_combo + confounders
 batch <- as.factor(as.character(df_pseudo$seq_run))
 nUMIs <- df_pseudo$nUMIs
 mito_perc <- df_pseudo$mito_perc
 G1.S <- df_pseudo$G1.S
 G2.M <- df_pseudo$G2.M
 block_column <- df_pseudo$dataset
-
 test_column <- as.factor(paste0(df_pseudo$condition, '_', df_pseudo$origin))
+
+confounders <- '_nUMIs_mito_perc'
 design <- model.matrix(~ 0 + test_column + nUMIs + mito_perc)
 design %>% head()
-confounders <- '_nUMIs_mito_perc'
+
 
 # Create contrasts
 PTs_vs_lungs <- makeContrasts(
@@ -193,7 +194,8 @@ names_contrasts <- c('PTs_vs_lungs', 'single_treated_vs_untreated_lungs', 'doubl
                      'double_treated_vs_single_treated_lungs', 'treated_vs_untreated_PTs')
 res_fixed <- lapply(myContrasts, function(x) { test_pseudobulk_fixed(fit_fixed, x) } )
 res_fixed <- setNames(res_fixed, names_contrasts)
-res_fixed <- lapply(myContrasts, function(x) { test_pseudobulk_random(fit, x) } )
+res_random <- lapply(myContrasts, function(x) { test_pseudobulk_random(fit_random, x) } )
+res_random <- setNames(res_random, names_contrasts)
 
 
 # Save results fixed
@@ -205,7 +207,7 @@ for (x in names(res_fixed)) {
 # Save results random
 for (x in names(res_random)) {
   df <- res_random[[x]] %>% mutate(contrast=x) 
-  write.csv(df, paste0(path_results, '/random/results_', x, confounders, 'dataset.csv'))
+  write.csv(df, paste0(path_results, '/random/results_', x, confounders, '_dataset.csv'))
 }
 
 
