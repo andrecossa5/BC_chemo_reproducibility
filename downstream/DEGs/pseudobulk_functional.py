@@ -6,7 +6,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib
-from itertools import chain
+from itertools import chain, product
 from functools import reduce
 from plotting_utils import *
 from BC_chemo_utils.tests import fastGSEA
@@ -22,21 +22,21 @@ path_main = '/Users/IEO5505/Desktop/BC_chemo_reproducibility/'
 path_results = os.path.join(path_main, 'results', 'MDA', 'pseudobulk')
 
 # Read DE results
-# df_fixed = (
-#     read_model_results(path_results, 'fixed')
-#     [['logFC', 'FDR', 'contrast', 'regressed_cc']]
-#     .assign(model='fixed')
-# )
-# df_mixed = (
-#     read_model_results(path_results, 'random')
-#     .rename(columns={'adj.P.Val':'FDR'})
-#     [['logFC', 'FDR', 'contrast', 'regressed_cc']]
-#     .assign(model='mixed')
-# )
+df_fixed = (
+    read_model_results(path_results, 'fixed')
+    [['logFC', 'FDR', 'contrast', 'regressed_cc']]
+    .assign(model='fixed')
+)
+df_mixed = (
+    read_model_results(path_results, 'random')
+    .rename(columns={'adj.P.Val':'FDR'})
+    [['logFC', 'FDR', 'contrast', 'regressed_cc']]
+    .assign(model='mixed')
+)
 
 # Merge and save
-# df = pd.concat([ df_fixed, df_mixed ])
-# df.to_csv(os.path.join(path_results, 'results.csv'))
+df = pd.concat([ df_fixed, df_mixed ])
+df.to_csv(os.path.join(path_results, 'results.csv'))
 
 # Read
 df = pd.read_csv(os.path.join(path_results, 'results.csv'), index_col=0)
@@ -46,18 +46,18 @@ df = pd.read_csv(os.path.join(path_results, 'results.csv'), index_col=0)
 
 
 # GSEA on all DEGs lists
-# combos = product(
-#     df['contrast'].unique(), 
-#     df['model'].unique(), 
-#     df['regressed_cc'].unique()
-# )
-# for c, m, cc in combos:
-#     df_ = fastGSEA(df.query('contrast==@c and model==@m and regressed_cc==@cc')['logFC'])
-#     df_.to_csv(
-#         os.path.join(
-#             path_results, 'GSEA', 'GO_biological_process_2021', f'{c}_{m}_{cc}.csv'
-#         )
-#     )
+combos = product(
+    df['contrast'].unique(), 
+    df['model'].unique(), 
+    df['regressed_cc'].unique()
+)
+for c, m, cc in combos:
+    df_ = fastGSEA(df.query('contrast==@c and model==@m and regressed_cc==@cc')['logFC'])
+    df_.to_csv(
+        os.path.join(
+            path_results, 'GSEA', 'GO_biological_process_2021', f'{c}_{m}_{cc}.csv'
+        )
+    )
 
 # Read GSEA
 df_gsea = read_GSEA(path_results)
@@ -68,7 +68,7 @@ df_gsea = read_GSEA(path_results)
 
 # Make some sense out of it!
 
-# Top represented genes across all contrasts: within top10, FDR and logFC
+# Top represented genes across all contrasts: within top5, FDR and logFC
 feat = 'logFC'
 pd.Series(chain.from_iterable(
     df

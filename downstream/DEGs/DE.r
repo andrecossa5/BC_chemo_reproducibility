@@ -108,7 +108,6 @@ test_pseudobulk_fixed <- function(fit, contrast=NULL) {
 ##
 
 
-
 test_pseudobulk_random <- function(fit, contrast=NULL) {
   
   # Test contrasts
@@ -150,6 +149,7 @@ colData(filtered_sce)$group <- as.factor(colData(filtered_sce)$group)
 df_pseudo <- aggregate_data(filtered_sce, assay='raw', group_by='group', 
                             cont_covariates=c('nUMIs', 'mito_perc', 'G1.S', 'G2.M'),
                             cat_covariates=c('seq_run', 'condition', 'dataset', 'origin'))
+# write.csv(df_pseudo, paste0(path_data, '/agg_pseudobulk.csv'))
 
 # Pseudobulk DE with edgeR
 df_pseudo[,1:10] %>% head()
@@ -166,23 +166,24 @@ G2.M <- df_pseudo$G2.M
 block_column <- df_pseudo$dataset
 test_column <- as.factor(paste0(df_pseudo$condition, '_', df_pseudo$origin))
 
-confounders <- '_nUMIs_mito_perc'
-design <- model.matrix(~ 0 + test_column + nUMIs + mito_perc)
+confounders <- '_nUMIs_mito_perc_G2.M'
+design <- model.matrix(~ 0 + test_column + nUMIs + mito_perc + G2.M)
 design %>% head()
-
 
 # Create contrasts
 PTs_vs_lungs <- makeContrasts(
   (test_columnAC_AC_PT+test_columnAC_NT_PT+test_columnNT_AC_PT+test_columnNT_NT_PT)/4-(test_columnAC_AC_lung+test_columnAC_NT_lung+test_columnNT_AC_lung+test_columnNT_NT_lung)/4,
   levels=design
 )
-single_treated_vs_untreated_lungs <- makeContrasts(test_columnAC_NT_lung-test_columnNT_NT_lung, levels=design)
+PT_treated_vs_untreated_lungs <- makeContrasts(test_columnAC_NT_lung-test_columnNT_NT_lung, levels=design)
+met_treated_vs_untreated_lungs <- makeContrasts(test_columnNT_AC_lung-test_columnNT_NT_lung, levels=design)
 double_treated_vs_untreated_lungs <- makeContrasts(test_columnAC_AC_lung-test_columnNT_NT_lung, levels=design)
-double_treated_vs_single_treated_lungs <- makeContrasts(test_columnAC_AC_lung-test_columnAC_NT_lung, levels=design)
+double_treated_vs_PT_treated_lungs <- makeContrasts(test_columnAC_AC_lung-test_columnAC_NT_lung, levels=design)
+double_treated_vs_met_treated_lungs <- makeContrasts(test_columnAC_AC_lung-test_columnNT_AC_lung, levels=design)
 treated_vs_untreated_PTs <- makeContrasts((test_columnAC_AC_PT+test_columnAC_NT_PT)/2-(test_columnNT_NT_PT+test_columnNT_AC_PT)/2, levels=design)
 myContrasts <- list(
-  PTs_vs_lungs, single_treated_vs_untreated_lungs, double_treated_vs_untreated_lungs, 
-  double_treated_vs_single_treated_lungs, treated_vs_untreated_PTs
+  PTs_vs_lungs, PT_treated_vs_untreated_lungs, met_treated_vs_untreated_lungs, double_treated_vs_untreated_lungs,
+  double_treated_vs_PT_treated_lungs, double_treated_vs_met_treated_lungs, treated_vs_untreated_PTs
 )
 
 # Fit fixed and random models
@@ -190,13 +191,14 @@ fit_fixed <- fit_pseudobulk_fixed(df_pseudo, filtered_sce, test_column, design)
 fit_random <- fit_pseudobulk_random(df_pseudo, filtered_sce, test_column, block_column, design)
 
 # Test contrasts
-names_contrasts <- c('PTs_vs_lungs', 'single_treated_vs_untreated_lungs', 'double_treated_vs_untreated_lungs', 
-                     'double_treated_vs_single_treated_lungs', 'treated_vs_untreated_PTs')
+names_contrasts <- c('PTs_vs_lungs', 'PT_treated_vs_untreated_lungs', 'met_treated_vs_untreated_lungs', 
+                     'double_treated_vs_untreated_lungs', 'double_treated_vs_PT_treated_lungs', 
+                     'double_treated_vs_met_treated_lungs', 'treated_vs_untreated_PTs')
+
 res_fixed <- lapply(myContrasts, function(x) { test_pseudobulk_fixed(fit_fixed, x) } )
 res_fixed <- setNames(res_fixed, names_contrasts)
 res_random <- lapply(myContrasts, function(x) { test_pseudobulk_random(fit_random, x) } )
 res_random <- setNames(res_random, names_contrasts)
-
 
 # Save results fixed
 for (x in names(res_fixed)) {
