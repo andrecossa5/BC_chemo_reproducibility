@@ -69,11 +69,11 @@ df_gsea = read_GSEA(path_results)
 # Make some sense out of it!
 
 # Top represented genes across all contrasts: within top5, FDR and logFC
-feat = 'logFC'
+feat = 'FDR'
 pd.Series(chain.from_iterable(
     df
     .groupby(['contrast', 'model', 'regressed_cc'])
-    .apply(lambda x: x.sort_values(feat, ascending=False).index.to_list()[:5])
+    .apply(lambda x: x.sort_values(feat, ascending=True).index.to_list()[:5])
 )).value_counts().to_frame('n').to_csv(
     os.path.join(path_results, f'top_represented_genes_{feat}.csv')
 )
