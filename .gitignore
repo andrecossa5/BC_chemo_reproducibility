@@ -9,6 +9,7 @@ data/
 
 # .DS_Store
 ./.DS_Store
+*/.DS_Store
 
 # C extensions
 *.so
