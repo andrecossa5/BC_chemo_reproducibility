@@ -9,6 +9,11 @@ from joblib import cpu_count
 from scipy.special import binom
 from scipy.stats import fisher_exact
 from statsmodels.sandbox.stats.multicomp import multipletests
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_percentage_error, r2_score
+
 
 
 #
@@ -121,11 +126,15 @@ def compute_enrichment(df, col1, col2, target):
 
     # Results
     results = pd.DataFrame({
+        'group': groups,
         'perc_in_target' : target_ratio_array,
         'odds_ratio' : oddsratio_array,
         'FDR' : pvals,
         'enrichment' : -np.log10(pvals) 
     }).sort_values('enrichment', ascending=False)
+
+    # Reformat FDR
+    results['FDR'] = results['FDR'].map(lambda x: f'{x:.2e}')
 
     return results
 
@@ -163,3 +172,44 @@ def fastGSEA(s, collection='GO_Biological_Process_2021', n_top=50):
     filtered_df = filtered_df.set_index('Term')
 
     return filtered_df
+
+
+##
+
+
+def simple_lm(df, y='met_potential', cov=None, n=100, prop_test=.2):
+
+    MAPEs = []
+    R2 = []
+    w = []
+    for _ in range(n):
+
+        model = LinearRegression(fit_intercept=False)
+        scaler = StandardScaler()
+        train, test = train_test_split(df, test_size=prop_test)
+
+        X_train_scaled = scaler.fit_transform(train[cov])
+        y_train_scaled = scaler.fit_transform(train[y].values.reshape(-1,1))
+        X_test_scaled = scaler.fit_transform(test[cov])
+        y_test_scaled = scaler.fit_transform(test[y].values.reshape(-1,1))
+
+        model.fit(X_train_scaled, y_train_scaled)
+        MAPEs.append(
+            mean_absolute_percentage_error(
+            model.predict(X_test_scaled), scaler.fit_transform(y_test_scaled) 
+        ))
+        R2.append(
+            r2_score(
+            model.predict(X_test_scaled), scaler.fit_transform(y_test_scaled) 
+        ))
+        w.append(
+            pd.Series(model.coef_.flatten(), index=cov).sort_values(ascending=False)
+        )
+        df_res = pd.concat(w, axis=1)
+        order = df_res.median(axis=1).sort_values(ascending=False).index
+        df_res = df_res.loc[order]
+
+    return MAPEs, R2, df_res
+
+
+##

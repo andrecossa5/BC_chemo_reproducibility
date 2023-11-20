@@ -13,7 +13,10 @@ from plotting_utils._plotting_base import *
 #
 
         
-def packed_circle_plot(df, covariate=None, ax=None, color='b', annotate=False):
+def packed_circle_plot(
+    df, covariate=None, ax=None, color='b', cmap=None, alpha=.5, linewidth=1.2,
+    t_cov=.01, annotate=False, fontsize=6
+    ):
     """
     Circle plot. Packed.
     """
@@ -34,20 +37,30 @@ def packed_circle_plot(df, covariate=None, ax=None, color='b', annotate=False):
     ax.set_xlim(-lim, lim)
     ax.set_ylim(-lim, lim)
     
+    if isinstance(color, str) and not color in df.columns:
+        colors = { k : color for k in df.index }
+    elif isinstance(color, str) and color in df.columns:
+        colors = create_palette(df, covariate, cmap)
+    else:
+        assert isinstance(color, dict)
+        colors = color
+        print('Try to use custom colors...')
+
     for name, circle in zip(df.index[::-1], circles): # Don't know why, but it reverses...
         x, y, r = circle
         ax.add_patch(
-            plt.Circle((x, y), r*0.95, alpha=0.5, linewidth=1.2, 
-                fill=True, edgecolor=color, facecolor=color)
+            plt.Circle((x, y), r*0.95, alpha=alpha, linewidth=linewidth, 
+                fill=True, edgecolor=colors[name], facecolor=colors[name])
         )
-        
+
         if annotate:
             cov = df.loc[name, covariate]
-            if cov > 0.01:
+            if cov > t_cov:
+                n = name if len(name)<=5 else name[:5]
                 ax.annotate(
-                    f'{name}: {df.loc[name, covariate]:.2f}', 
+                    f'{n}: {df.loc[name, covariate]:.2f}', 
                     (x,y), 
-                    va='center', ha='center', fontsize=5
+                    va='center', ha='center', fontsize=fontsize
                 )
 
     ax.axis('off')

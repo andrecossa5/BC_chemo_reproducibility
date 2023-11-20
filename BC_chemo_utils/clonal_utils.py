@@ -9,7 +9,7 @@ import pandas as pd
 ##
 
 
-def stats_summary(df, key='sample', use_spikeins=False):
+def stats_summary(df, key='sample', freq='freq_sc'):
     """
     Basic stats summary.
     """
@@ -28,7 +28,6 @@ def stats_summary(df, key='sample', use_spikeins=False):
     for c in df['sample'].cat.categories:
 
         df_one = df.query('sample == @c')
-        freq = 'cellular_prevalence_wi' if use_spikeins else 'cellular_prevalence_wo'
         stats_one = df_one[freq].describe()
 
         stats[key].append(c)
@@ -117,3 +116,71 @@ def common_in(df, n, normalize=False):
 
 
 #
+
+
+def calculate_clonal_SH_and_prevalence(adata, cov='cell_states'):
+    """
+    Util to calculate for each clone-sample combo the SH of its cell state frequency and its cell state prevalences.
+    """
+
+    df_ = (
+        adata.obs.groupby(['condition', 'origin', 'sample'])
+        ['GBC'].value_counts(normalize=True).loc[lambda x:x>0]
+        .reset_index(name='freq')
+        .rename(columns={'level_3':'GBC'})
+        .merge(
+            adata.obs[['sample', 'dataset']]
+            .reset_index(drop=True)
+            .drop_duplicates(),
+
+        )
+        .drop_duplicates()
+        .pivot_table(index='GBC', columns=['dataset', 'origin'], values='freq')
+        .melt(value_name='freq', ignore_index=False)
+        .reset_index()
+        .pivot_table(index=['GBC', 'dataset'], columns='origin', values='freq')
+        .reset_index().dropna().set_index('GBC')
+        .assign(met_potential=lambda x: x['lung']/x['PT'])
+    )
+
+    # SH and frequency of each clone in a cluster
+    SH_PT = []
+    SH_lung = []
+    P_L = []
+    for i in range(df_.shape[0]):
+
+        GBC = df_.index[i]
+        dataset = df_.iloc[i,0]
+        SH_PT.append(
+        SH(
+            adata.obs
+            .query('GBC==@GBC and dataset==@dataset and origin=="PT"')
+            [cov].value_counts(normalize=True).values + 0.00000001
+        ))
+        SH_lung.append(
+        SH(
+            adata.obs.query('GBC==@GBC and dataset==@dataset and origin=="lung"')
+            [cov].value_counts(normalize=True).values + 0.00000001
+        ))
+        P_L.append(
+            adata.obs.query('GBC==@GBC and dataset==@dataset')[cov]
+            .value_counts(normalize=True)
+            .loc[adata.obs[cov].cat.categories]
+            .values[np.newaxis,:]
+        )
+
+    df_prev = pd.DataFrame(
+        np.concatenate(P_L, axis=0), 
+        columns=adata.obs[cov].cat.categories,
+        index=df_.index
+    )
+
+    df_['SH_PT'] = SH_PT
+    df_['SH_lung'] = SH_lung
+    df_['diff_SH'] = df_['SH_PT'] / df_['SH_lung']
+    df_ = df_.join(df_prev)
+
+    return df_
+
+
+##

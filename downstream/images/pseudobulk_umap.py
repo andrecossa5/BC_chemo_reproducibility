@@ -1,5 +1,5 @@
 """
-Script to perform visualization of pseudobulk DE.
+UMAP of pseudobulk clones.
 """
 
 import os
@@ -22,7 +22,8 @@ path_results = os.path.join(path_main, 'results', 'MDA', 'pseudobulk')
 
 # Read clustered
 clustered = sc.read(os.path.join(path_data, 'clustered.h5ad'))
-clustered.obs['GBC_sample'] = clustered.obs['GBC'].astype(str) + clustered.obs['sample'].astype(str)
+clustered.obs['GBC_sample'] = clustered.obs['GBC'].astype(str) + \
+                              clustered.obs['sample'].astype(str)
 GBC_size = clustered.obs.groupby('GBC_sample').size().loc[lambda x: x>=10]
 
 # Read aggregated clone table
@@ -37,12 +38,13 @@ adata = AnnData(
 )
 
 # PP, PCA, UMAP
+seed = 0
 sc.pp.normalize_total(adata, target_sum=10**6)
-sc.pp.highly_variable_genes(adata, n_top_genes=2000, flavor='seurat_v3', inplace=True, subset=True)
+sc.pp.highly_variable_genes(adata, n_top_genes=2000, flavor='cell_ranger', inplace=True, subset=True)
 sc.pp.scale(adata)
-sc.pp.pca(adata, n_comps=30)
-sc.pp.neighbors(adata, n_neighbors=10)
-sc.tl.umap(adata)
+sc.pp.pca(adata, n_comps=30, random_state=seed)
+sc.pp.neighbors(adata, n_neighbors=10, random_state=seed)
+sc.tl.umap(adata, random_state=seed)
 df_embs = adata.obs.join(
     pd.DataFrame(
         adata.obsm['X_pca'], index=adata.obs_names,
@@ -55,40 +57,42 @@ df_embs = adata.obs.join(
     )
 ))
 
+# Read colors
+clustered.obs['mock'] = clustered.obs['GBC'].astype(str) + clustered.obs['sample'].astype(str)
+df_embs = df_embs.drop(columns=['condition'])
+df_embs['condition'] = df_embs.index.map(
+    lambda x: clustered.obs.loc[clustered.obs['mock']==x, 'condition'].unique()[0]
+)
+df_embs['condition'] = pd.Categorical(
+    df_embs['condition'], 
+    categories=clustered.obs['condition'].cat.categories
+)
+condition_colors = create_palette(df_embs, 'condition', ten_godisnot)
+
+# Save
+df_embs.to_csv(os.path.join(path_data, 'embs_pseudo.csv'))
+
+
+##
+
 
 # Viz 
+fig, ax = plt.subplots(figsize=(6.5,5))
 
-fig, ax = plt.subplots(figsize=(4,4))
-colors = create_palette(df_embs, 'seq_run', 'tab10')
 scatter(
-    df_embs, x='UMAP1', y='UMAP2', c=colors, 
-    by='seq_run', a=.5, s='size', scale_x=.7, ax=ax
-)
-format_ax(ax, title='Lentiviral clones')
-add_legend(label='Seq run', colors=colors, ax=ax, loc='lower left', 
-           bbox_to_anchor=(0,0), label_size=8, artists_size=6, ticks_size=6)
-ax.axis('off')
-fig.tight_layout()
-plt.show()
-
-fig, ax = plt.subplots(figsize=(5,5))
-colors = create_palette(df_embs, 'condition', 'tab10')
-scatter(
-    df_embs, x='UMAP1', y='UMAP2', c=colors, 
+    df_embs, x='UMAP1', y='UMAP2', c=condition_colors, 
     by='condition', a=.5, s='size', scale_x=.7, ax=ax
 )
 format_ax(ax, title='Lentiviral clones')
-add_legend(label='Condition', colors=colors, ax=ax, loc='lower left', 
-           bbox_to_anchor=(0,0), label_size=10, artists_size=8, ticks_size=8)
+add_legend(label='Condition', colors=condition_colors, ax=ax, loc='upper left', 
+           bbox_to_anchor=(1,1), label_size=10, artists_size=8, ticks_size=8)
 ax.axis('off')
+
 fig.tight_layout()
-plt.show()
+fig.savefig(os.path.join(path_results, 'umap_pseudobulk.png'), dpi=400)
 
 
-
-
-
-# Visualization
+##
 
 
 
