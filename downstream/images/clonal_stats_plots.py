@@ -165,3 +165,27 @@ fig.savefig(os.path.join(path_results, 'met_potential.png'), dpi=300)
 
 
 ##
+
+
+
+
+(
+    df_
+    .loc[df_['dataset'].str.contains('AC_AC_2')]
+    .sort_values('met_potential', ascending=False)
+)
+
+
+adata.obs['GBC'].str.contains('TAGAGCACCAAAA').sum()
+
+
+adata.obs.query('sample=="AC_AC_PTs_2"').groupby('GBC').size().sort_values(ascending=False)
+
+
+
+
+'AACTCGACGCCTTATCAG'
+'GAAAGCGTAACGCGTCAG'
+
+
+'CTGACGCGTT'

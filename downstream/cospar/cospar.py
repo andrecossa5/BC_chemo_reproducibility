@@ -1,27 +1,8 @@
 """
-CosPar.
+CosPar analysis. 
 """
 
-import os
-import re
-import pickle
-import numpy as np
-import pandas as pd
-import matplotlib
-import matplotlib.pyplot as plt
 
-from anndata import AnnData
-import cospar as cs
-from Cellula.preprocessing._pp_recipes import *
-from Cellula.preprocessing._pp import *
-from Cellula.preprocessing._embeddings import *
-from Cellula.preprocessing._neighbors import *
-from Cellula.preprocessing._integration import *
-from Cellula.clustering._clustering import *
-from Cellula.plotting._colors import *
-from Cellula.plotting._plotting_base import *
-from Cellula.plotting._plotting import *
-matplotlib.use('macOSX')
 
 
 ##
