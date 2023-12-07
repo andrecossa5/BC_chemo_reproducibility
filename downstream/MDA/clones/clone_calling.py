@@ -25,16 +25,14 @@ def summary_what_we_have_longitudinal(meta, branch, dataset, print_top=True):
 
     valid_CB_PT = set(valid_CB_PT) & set(PT_cells.index)
     valid_CB_lung = set(valid_CB_lung) & set(lung_cells.index)
-    valid_clones_PT = PT_cells.loc[list(valid_CB_PT)]['clone'].unique()
-    valid_clones_lung = lung_cells.loc[list(valid_CB_lung)]['clone'].unique()
+    valid_clones_PT = PT_cells.loc[list(valid_CB_PT)]['GBC_set'].unique()
+    valid_clones_lung = lung_cells.loc[list(valid_CB_lung)]['GBC_set'].unique()
 
     PT_clones = pd.read_csv(os.path.join(path_clones, PT_sample, 'clones_summary_table.csv'), index_col=0)
     lung_clones = pd.read_csv(os.path.join(path_clones, lung_sample, 'clones_summary_table.csv'), index_col=0)
-    PT_clones = PT_clones.loc[list(valid_clones_PT)]
-    lung_clones = lung_clones.loc[list(valid_clones_lung)]
 
-    set_PT = set(PT_clones['GBC_set'].values)
-    set_lung = set(lung_clones['GBC_set'].values)
+    set_PT = set(PT_clones.loc[PT_clones['GBC_set'].isin(valid_clones_PT), 'GBC_set'].unique())
+    set_lung = set(lung_clones.loc[lung_clones['GBC_set'].isin(valid_clones_lung), 'GBC_set'].unique())
 
     print(
         f'''
@@ -42,13 +40,16 @@ def summary_what_we_have_longitudinal(meta, branch, dataset, print_top=True):
         n PT {len(set_PT)}, n lung {len(set_lung)}, common {len(set_PT & set_lung)}
         '''
     )
-    print([ ';'.join(x) for x in (set_PT & set_lung)])
+
+    PT_clones = PT_clones.set_index('GBC_set').loc[list(set_PT & set_lung)]
+    PT_clones.columns = [f'PT {x}' for x in PT_clones.columns]
+    lung_clones = lung_clones.set_index('GBC_set').loc[list(set_PT & set_lung)]
+    lung_clones.columns = [f'lung {x}' for x in lung_clones.columns]
+    top = lung_clones.sort_values('lung prevalence', ascending=False).join(PT_clones)
 
     if print_top:
-        print('PT')
-        print(PT_clones.sort_values('n cells', ascending=False).head(10))
-        print('lung')
-        print(lung_clones.sort_values('n cells', ascending=False).head(10))
+        print(top)
+        print(top.loc[lambda x: (x['PT n cells']>=10) & (x['lung n cells']>=10)])
 
 
 ##
@@ -58,28 +59,22 @@ def what_we_have_all_samples(meta):
 
     samples = meta['sample'].unique()
 
-    valid_CBC_GBC_set = []
+    valid_cells = []
     n_cells = {}
     set_clones = {}
    
     for sample in samples:
-
-        valid_CB = meta.query('sample==@sample').index.map(lambda x: x.split('_')[0])
-        cells = pd.read_csv(os.path.join(path_clones, sample, 'cells_summary_table.csv'), index_col=0)
-        valid_CB = set(valid_CB) & set(cells.index)
-        valid_clones = cells.loc[list(valid_CB)]['clone'].unique()
-        clones = pd.read_csv(os.path.join(path_clones, sample, 'clones_summary_table.csv'), index_col=0)
-        clones = clones.loc[list(valid_clones)]
-        set_clones[sample] = set(clones['GBC_set'].values)
-        n_cells[sample] = len(valid_CB)
-        cells_new = (
-            cells.loc[list(valid_CB)].reset_index()
-            .merge(clones.reset_index(), on='clone')
-            [['CBC', 'GBC_set']]
-            .set_index('CBC')
+        valid_CB = meta.query('sample==@sample').index
+        cells = pd.read_csv(
+            os.path.join(path_clones, sample, 'cells_summary_table.csv'),
+            index_col=0
         )
-        cells_new.index = cells_new.index.map(lambda x: f'{x}_{sample}')
-        valid_CBC_GBC_set.append(cells_new)
+        cells.index = cells.index.map(lambda x: f'{x}_{sample}')
+        valid_CB = list(set(valid_CB) & set(cells.index))
+        cells = cells.loc[valid_CB].rename(columns={'GBC_set':'GBC'}).join(meta.loc[valid_CB])
+        set_clones[sample] = set(cells['GBC'].unique().tolist())
+        n_cells[sample] = len(valid_CB)
+        valid_cells.append(cells)
 
     n = len(samples)
     C = np.zeros((n,n))
@@ -90,7 +85,7 @@ def what_we_have_all_samples(meta):
     return (
         pd.DataFrame(C, index=samples, columns=samples), 
         pd.Series(n_cells), 
-        pd.concat(valid_CBC_GBC_set)
+        pd.concat(valid_cells)
     )
 
 
@@ -139,41 +134,31 @@ meta['condition'] = pd.Categorical(
 ##
 
 
-
-##
-
-
 # Checks single couples, clones
-# summary_what_we_have_longitudinal(meta, 'NT_NT', 3, print_top=True)
+summary_what_we_have_longitudinal(meta, 'AC_NT', 3, print_top=False)
 
 
 ##
+
+
+# NT_NT: 4+9+3= 16 longitudinal >= 10 cells
+# AC_AC: 1+4+x= 5 longitudinal >= 10 cells
+# NT_AC: 2+8+x= 5 longitudinal >= 10 cells
+# AC_NT: x+x+3= 5 longitudinal >= 10 cells
 
 
 # Get valid CBC_GBC_sets
-common, n_cells, cbc_gbc_set = what_we_have_all_samples(meta)
-n_cells.sum()
-common.values.mean()
-
-# Rename valid GBC_sets
-d_names = (
-    cbc_gbc_set['GBC_set']
-    .value_counts()
-    .to_frame('n_cells')
-    .assign(name=lambda x: [ f'C{i}' for i in range(x.shape[0]) ])
-    ['name'].to_dict()
-)
-cbc_gbc_set['clone'] = cbc_gbc_set['GBC_set'].map(d_names)
-cbc_gbc_set['GBC_set'] = cbc_gbc_set['GBC_set'].astype('str')
-
-# Filter meta with filtered and clonally annotated cells
-meta = cbc_gbc_set.join(meta, how='left')
+common, n_cells, valid_cells = what_we_have_all_samples(meta)
+print(n_cells.sum())
+print(common.values.mean())
 
 
 ##
 
+
 # Save final cells
-meta.to_csv(os.path.join(path_data, 'cells_meta.csv'))
+samples = n_cells.loc[lambda x: x>1000].index
+valid_cells.to_csv(os.path.join(path_data, 'cells_meta.csv'))
 
 # Format QC.h5ad
 adata = sc.read(os.path.join(path_data, 'QC.h5ad'))
