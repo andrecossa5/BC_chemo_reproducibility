@@ -25,7 +25,7 @@ def stats_summary(df, key='sample', freq='freq_sc'):
         'EI' : []
     }
     
-    for c in df['sample'].cat.categories:
+    for c in df['sample'].unique():
 
         df_one = df.query('sample == @c')
         stats_one = df_one[freq].describe()
@@ -71,7 +71,7 @@ def common(df):
     Median and mean common clones across samples, plus their number for all pairwise comparisons
     """
 
-    samples = df['sample'].cat.categories
+    samples = df['sample'].unique()
     n_samples = samples.size
 
     counts = np.zeros((n_samples, n_samples))

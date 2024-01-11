@@ -23,22 +23,17 @@ path_data = os.path.join(path_main, 'data', 'MDA')
 path_results = os.path.join(path_main, 'results', 'MDA', 'clonal')
 
 # Read cells meta
-adata = sc.read(os.path.join(path_data, 'clustered.h5ad'))
-meta = adata.obs[['GBC', 'sample', 'origin', 'condition', 'dataset']]
+df = pd.read_csv(os.path.join(path_data, 'cells_meta.csv'), index_col=0)
+df = df[['GBC', 'sample', 'origin', 'condition', 'dataset']]
 
 # sc freqs 
 df_freq = (
-    meta.groupby(['condition', 'origin', 'sample'])
-    ['GBC'].value_counts(normalize=True).loc[lambda x:x>0]
+    df[['GBC', 'sample']]
+    .groupby('sample')
+    ['GBC'].value_counts(normalize=True)
     .reset_index(name='freq')
     .rename(columns={'level_3':'GBC'})
-    .merge(
-        meta[['sample', 'dataset']]
-        .reset_index(drop=True)
-        .drop_duplicates(),
-        
-    )
-    .drop_duplicates()
+    .merge(df[['sample', 'origin']].drop_duplicates(), on='sample')    
 )
 
 
@@ -49,21 +44,19 @@ df_freq = (
 fig, axs = plt.subplots(1,2,figsize=(9.5,5))
 
 for sample in df_freq.query('origin == "PT"')['sample'].unique():
-    color = 'grey' if sample.startswith('AC') else 'k'
-    print(color)
+    color = 'grey' if sample.startswith('AC') else '#2A6CB6'
     x = df_freq.query('sample == @sample')['freq'].cumsum().values
-    axs[0].plot(x, '.-', color=color)
+    axs[0].plot(x, '-', color=color, linewidth=2)
 format_ax(axs[0], title='PT (n=12)', xlabel='Clones, ranked', ylabel='Cumulative fraction')
 
 for sample in df_freq.query('origin == "lung"')['sample'].unique():
-    color = 'grey' if sample.startswith('NT_NT') else 'k'
-    print(color)
+    color = 'grey' if sample.startswith('NT_NT') else '#2A6CB6'
     x = df_freq.query('sample == @sample')['freq'].cumsum().values
-    axs[1].plot(x, '.-', color=color)
-format_ax(axs[1], title='lung (n=12)', xlabel='Clones, ranked', ylabel='Cumulative fraction')
+    axs[1].plot(x, '-', color=color, linewidth=2)
+format_ax(axs[1], title='lung (n=9)', xlabel='Clones, ranked', ylabel='Cumulative fraction')
 
 add_legend(
-    label='Sample type', colors={'treated':'grey', 'untreated':'k'}, ax=axs[0],
+    label='Sample type', colors={'treated':'#2A6CB6', 'untreated':'grey'}, ax=axs[0],
     bbox_to_anchor=(.95,.05), loc='lower right', ticks_size=8, label_size=10, artists_size=8
 )
 fig.tight_layout()
@@ -76,33 +69,19 @@ fig.savefig(os.path.join(path_results, 'cum_fractions.png'), dpi=300)
 # Prep stats 
 df_stats = stats_summary(df_freq, freq='freq')
 df_stats = (
-    df_freq[['sample', 'origin', 'dataset', 'condition']]
-    .merge(df_stats, on='sample')
-    .drop_duplicates()
+    df_freq[['sample', 'origin']]
+    .merge(df[['sample', 'condition']], on='sample').drop_duplicates()
+    .merge(df_stats, on='sample').drop_duplicates()
 )
 df_stats['condition'] = df_stats['condition'].astype('str')
 df_stats['origin'] = df_stats['origin'].astype('str')
 
-# Reformat condition
-tests = [
-    (df_stats['condition'].isin(['AC_AC', 'AC_NT'])) & (df_stats['origin'] == 'PT'),
-    (df_stats['condition'].isin(['NT_NT', 'NT_AC'])) & (df_stats['origin'] == 'PT'),
-    (df_stats['condition'] == 'NT_NT') & (df_stats['origin'] == 'lung'),
-    (df_stats['condition'] == 'AC_NT') & (df_stats['origin'] == 'lung'),
-    (df_stats['condition'] == 'NT_AC') & (df_stats['origin'] == 'lung'),
-    (df_stats['condition'] == 'AC_AC') & (df_stats['origin'] == 'lung')
-]
-labels = [
-    'PT, treated', 'PT, untreated', 'lung, untreated', 
-    'lung, PT-treated', 'lung, lung-treated',
-    'lung, double-treated'
-]
-df_stats['condition'] = np.select(tests, labels)
+# Re-set categories
 df_stats['condition'] = pd.Categorical(
     df_stats['condition'], 
     categories=[
         'PT, treated', 'PT, untreated', 'lung, untreated',
-        'lung, PT-treated', 'lung, lung-treated', 'lung, double-treated'
+        'lung, single-treated', 'lung, double-treated'
     ]
 )
 
@@ -113,10 +92,9 @@ df_stats['condition'] = pd.Categorical(
 # Viz, boxplots
 pairs = [
     ['PT, untreated', 'PT, treated'],
-    ['lung, untreated', 'lung, PT-treated'],
-    ['lung, untreated', 'lung, lung-treated'],
-    ['lung, lung-treated', 'lung, double-treated'],
-    ['lung, PT-treated', 'lung, double-treated'],
+    ['lung, untreated', 'lung, single-treated'],
+    ['lung, single-treated', 'lung, double-treated'],
+    ['lung, untreated', 'lung, double-treated'],
 ]
 
 fig, axs = plt.subplots(2,1, figsize=(11,6), sharex=True)
@@ -140,6 +118,7 @@ fig.savefig(os.path.join(path_results, 'stats.png'), dpi=300)
 # Viz expansions
 df_ = (
     df_freq
+    .merge(df[['sample', 'dataset']].drop_duplicates(), on='sample')
     .pivot_table(index='GBC', columns=['dataset', 'origin'], values='freq')
     .melt(value_name='freq', ignore_index=False)
     .reset_index()
@@ -167,25 +146,27 @@ fig.savefig(os.path.join(path_results, 'met_potential.png'), dpi=300)
 ##
 
 
+# n longitudinal with more than ... cells
+df_ = df_.reset_index()
 
+L = []
+origin = "PT"
+for i in range(df_.shape[0]):
+    d = df_.iloc[i,:].to_dict()
+    dataset = d['dataset']
+    GBC = d['GBC']
+    L.append(
+        df.query('origin==@origin and dataset==@dataset and GBC==@GBC').shape[0]
+    )
+df_['n_PT'] = L
 
+# Longitudinal clones
 (
     df_
-    .loc[df_['dataset'].str.contains('AC_AC_2')]
+    .query('n_PT>=10 and n_lung>=10')
     .sort_values('met_potential', ascending=False)
+    .to_csv(os.path.join(path_data, 'longitudinal_clones.csv'), index=False)
 )
 
 
-adata.obs['GBC'].str.contains('TAGAGCACCAAAA').sum()
-
-
-adata.obs.query('sample=="AC_AC_PTs_2"').groupby('GBC').size().sort_values(ascending=False)
-
-
-
-
-'AACTCGACGCCTTATCAG'
-'GAAAGCGTAACGCGTCAG'
-
-
-'CTGACGCGTT'
+##

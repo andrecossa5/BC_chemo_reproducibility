@@ -41,11 +41,13 @@ L = [
     (meta['sample'].str.startswith('NT_NT')) & (meta['origin'] == 'PT'),
     (meta['sample'].str.startswith('NT_NT')) & (meta['origin'] == 'lung'),
     (meta['sample'].str.startswith('NT_AC')) & (meta['origin'] == 'PT'),
-    (meta['sample'].str.startswith('NT_AC')) & (meta['origin'] == 'lung')
+    (meta['sample'].str.startswith('NT_AC')) & (meta['origin'] == 'lung'),
+    (meta['sample'].str.startswith('AC_NT')) & (meta['origin'] == 'PT'),
+    (meta['sample'].str.startswith('AC_NT')) & (meta['origin'] == 'lung')
 ]
 c = [
     'PT, treated', 'lung, double-treated', 'PT, untreated', 'lung, untreated',
-    'PT, untreated', 'lung, single-treated'
+    'PT, untreated', 'lung, single-treated', 'PT, treated', 'lung, single-treated'
 ]
 meta['condition'] = np.select(L, c)
 meta['condition'] = pd.Categorical(
@@ -148,5 +150,47 @@ dist_reads.savefig(os.path.join(path_main, 'results', 'MDA', 'clonal', 'UMI_tres
 dist_combos.tight_layout()
 dist_combos.savefig(os.path.join(path_main, 'results', 'MDA', 'clonal', 'filtered_combos.png'), dpi=200)
 
+# New meta
+meta_new = pd.concat(CELL_DFs).join(meta).rename(columns={'GBC_set':'GBC'})
+meta_new['sample'].unique().size
 
-pd.concat(CELL_DFs)
+# Add batches and reformat columns
+batches_df = pd.read_csv(os.path.join(path_data, 'batches.csv'))
+batches_df.columns = ['sample', 'seq_run', 'infection', 'exp_condition']
+meta_new = meta_new.merge(batches_df[['sample', 'seq_run', 'infection']], on='sample')
+
+# Inspect final metadata
+
+# n cells by seq_run and infection
+(
+    meta_new
+    .query('origin=="lung"')
+    .groupby('seq_run')
+    ['sample'].value_counts()
+    .to_frame('n').reset_index()
+    .groupby('seq_run')['n'].median()
+)
+
+# n clones by condition
+(
+    meta_new.groupby('sample')
+    ['GBC'].nunique()
+    .to_frame('nGBC')
+    .reset_index()
+    .merge(
+        meta_new[['sample', 'condition']].drop_duplicates(), 
+        how='left'
+    )
+    .groupby('condition')
+    ['nGBC'].median()
+)
+
+
+##
+
+
+# Save final metadata
+meta_new.to_csv(os.path.join(path_data, 'cells_meta.csv'))
+
+
+##
