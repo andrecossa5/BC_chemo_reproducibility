@@ -1,5 +1,5 @@
 """
-Clone calling MDA dataset.
+Final cell_assignment MDA dataset.
 """
 
 import os
@@ -60,8 +60,16 @@ meta['condition'] = pd.Categorical(
 ##
 
 
-# Get saved params
+# Get saved coverage_tresholds
 df_params = pd.read_csv(path_params, index_col=0)
+
+# Other params
+correction_type = 'reference-free'
+umi_treshold = 5
+p_treshold = 1 
+max_ratio_treshold = .75,
+normalized_abundance_treshold = .75
+
 
 # Get all cells, and visualization for all samples
 CELL_DFs = []
@@ -79,7 +87,7 @@ for i,sample in enumerate(df_params.index):
         COUNTS = pickle.load(p)
 
     # Filter only QCed cells
-    counts = COUNTS[d['correction_type']]
+    counts = COUNTS['reference-free']
     counts = counts.loc[
         counts['CBC']
         .isin(meta.query('sample==@sample')
@@ -95,13 +103,13 @@ for i,sample in enumerate(df_params.index):
     ax.set(title=sample)
 
     # Get combos
-    df_combos = get_combos(counts, gbc_col=f'GBC_{d["correction_type"]}')
+    df_combos = get_combos(counts, gbc_col=f'GBC_{correction_type}')
 
     # Filtering CBC-GBC
     M, _ = filter_and_pivot(
         df_combos, 
-        umi_treshold=5, 
-        p_treshold=1,  
+        umi_treshold=umi_treshold, 
+        p_treshold=p_treshold,  
         max_ratio_treshold=max_ratio_treshold,
         normalized_abundance_treshold=normalized_abundance_treshold
     )
