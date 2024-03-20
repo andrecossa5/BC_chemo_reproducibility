@@ -1,193 +1,191 @@
 """
-Clone calling MDA dataset.
+Final cell_assignment CTCs dataset.
 """
 
 import os
+import sys
+import pickle
 import pandas as pd
 import numpy as np
-import scanpy as sc
+from itertools import chain
+from plotting_utils._plotting_base import *
+sys.path.append('/Users/IEO5505/Desktop/MI_TO/mito_preprocessing/bin/sc_gbc')
+from helpers import *
 
 
 ##
 
-
-# Utils
-def summary_what_we_have_longitudinal(meta, branch, dataset, print_top=True):
-
-    PT_sample = f"{branch}_PTs_{dataset}"
-    lung_sample = f"{branch}_mets_{dataset}"
-
-    valid_CB_PT = meta.query('sample==@PT_sample').index.map(lambda x: x.split('_')[0])
-    valid_CB_lung = meta.query('sample==@lung_sample').index.map(lambda x: x.split('_')[0])
-
-    PT_cells = pd.read_csv(os.path.join(path_clones, PT_sample, 'cells_summary_table.csv'), index_col=0)
-    lung_cells = pd.read_csv(os.path.join(path_clones, lung_sample, 'cells_summary_table.csv'), index_col=0)
-
-    valid_CB_PT = set(valid_CB_PT) & set(PT_cells.index)
-    valid_CB_lung = set(valid_CB_lung) & set(lung_cells.index)
-    valid_clones_PT = PT_cells.loc[list(valid_CB_PT)]['clone'].unique()
-    valid_clones_lung = lung_cells.loc[list(valid_CB_lung)]['clone'].unique()
-
-    PT_clones = pd.read_csv(os.path.join(path_clones, PT_sample, 'clones_summary_table.csv'), index_col=0)
-    lung_clones = pd.read_csv(os.path.join(path_clones, lung_sample, 'clones_summary_table.csv'), index_col=0)
-    PT_clones = PT_clones.loc[list(valid_clones_PT)]
-    lung_clones = lung_clones.loc[list(valid_clones_lung)]
-
-    set_PT = set(PT_clones['GBC_set'].map(lambda x: frozenset(x.split(';'))).values)
-    set_lung = set(lung_clones['GBC_set'].map(lambda x: frozenset(x.split(';'))).values)
-
-    print(
-        f'''
-        Dataset {branch}{dataset}: n cells PT {len(valid_CB_PT)}, n cells lung {len(valid_CB_lung)}
-        n PT {len(set_PT)}, n lung {len(set_lung)}, common {len(set_PT & set_lung)}
-        '''
-    )
-
-    if print_top:
-        print('PT')
-        print(PT_clones.sort_values('n cells', ascending=False).head(10))
-        print('lung')
-        print(lung_clones.sort_values('n cells', ascending=False).head(10))
-
-
-##
-
-
-def what_we_have_all_samples(meta):
-
-    samples = meta['sample'].unique()
-
-    valid_CBC_GBC_set = []
-    n_cells = {}
-    set_clones = {}
-    median_n_infections = []
-   
-    for sample in samples:
-        valid_CB = meta.query('sample==@sample').index.map(lambda x: x.split('_')[0])
-        cells = pd.read_csv(os.path.join(path_clones, sample, 'cells_summary_table.csv'), index_col=0)
-        valid_CB = set(valid_CB) & set(cells.index)
-        valid_clones = cells.loc[list(valid_CB)]['clone'].unique()
-        clones = pd.read_csv(os.path.join(path_clones, sample, 'clones_summary_table.csv'), index_col=0)
-        clones = clones.loc[list(valid_clones)]
-        set_clones[sample] = set(clones['GBC_set'].map(lambda x: frozenset(x.split(';'))).values)
-        median_n_infections.extend([ len(x) for x in set_clones[sample] ])
-        n_cells[sample] = len(valid_CB)
-        cells_new = (
-            cells.loc[valid_CB].reset_index()
-            .merge(clones.reset_index(), on='clone')
-            [['CBC', 'GBC_set']]
-            .set_index('CBC')
-        )
-        cells_new.index = cells_new.index.map(lambda x: f'{x}_{sample}')
-        valid_CBC_GBC_set.append(cells_new)
-
-    n = len(samples)
-    C = np.zeros((n,n))
-    for i,x in enumerate(samples):
-        for j,y in enumerate(samples):
-            C[i,j] = len(set_clones[x] & set_clones[y])
-
-    return (
-        pd.DataFrame(C, index=samples, columns=samples), 
-        pd.Series(n_cells), 
-        pd.Series(median_n_infections),
-        pd.concat(valid_CBC_GBC_set)
-    )
 
 
 ##
 
 
 # Args
-path_data = '/Users/IEO5505/Desktop/BC_chemo_reproducibility/data/CTCs'
+path_main = '/Users/IEO5505/Desktop/BC_chemo_reproducibility'
+path_data = os.path.join(path_main, 'data', 'CTCs')
 path_clones = os.path.join(path_data, 'clonal_info')
+path_params = os.path.join(path_data, 'clone_assignment.csv')
 
 
 ##
 
 
 # Reformat meta: new metadata
-meta = pd.read_csv(os.path.join(path_data, 'cells_meta.csv'), index_col=0)
-
-# Remove shitty branch and additional, potentially unfiltered doublets
-meta = meta.query('nUMIs<=35000 and doublet_score<=.1')
+meta = pd.read_csv(os.path.join(path_data, 'cells_meta_orig.csv'), index_col=0)
 
 # Add dataset
-meta['dataset'] = np.where(meta['sample'].str.contains('early'), 'ealy', 'late')
-tests = [
+L = [ 
     meta['sample'].str.contains('PT'),
-    meta['sample'].str.contains('CTC'),
+    meta['sample'].str.contains('CTC'), 
     meta['sample'].str.contains('lung')
-    ]
-choices = ['PT', 'CTC', 'lung']
-meta['origin'] = np.select(tests, choices)
+]
+choices = ['PT', 'CTCs', 'lung']
+meta['origin'] = np.select(L, choices)
+meta['origin'] = pd.Categorical(meta['origin'], categories=['PT', 'CTCs', 'lung'])
+meta['condition'] = meta['sample'].map(lambda x: x.split('_')[-1])
+meta['condition'] = pd.Categorical(meta['condition'], categories=['early', 'late'])
+meta['dataset'] = meta['sample'].map(lambda x: x.split('_')[1]) + '_' + meta['condition'].astype('str')
+meta['dataset'] = pd.Categorical(meta['dataset'], categories=['1_early', '1_late', '2_late'])
 
 
 ##
 
 
-# Checks single couples, clones
+# Get saved coverage_tresholds
+df_params = pd.read_csv(path_params, index_col=0)
 
-# Get valid CBC_GBC_sets
-common, n_cells, n_infections, cbc_gbc_set = what_we_have_all_samples(meta)
-n_cells.sum()
-common.values.mean()
-n_infections.mean()
+# Other params
+correction_type = 'reference-free'
+umi_treshold = 5
+p_treshold = 1 
+max_ratio_treshold = .5,
+normalized_abundance_treshold = .5
 
-# Rename valid GBC_sets
-cbc_gbc_set['GBC_set'] = cbc_gbc_set['GBC_set'].map(lambda x: frozenset(x.split(';')) )
-d_names = (
-    cbc_gbc_set['GBC_set']
-    .value_counts()
-    .to_frame('n_cells')
-    .assign(name=lambda x: [ f'C{i}' for i in range(x.shape[0]) ])
-    ['name'].to_dict()
+
+# Get all cells, and visualization for all samples
+CELL_DFs = []
+dist_reads = plt.figure(figsize=(16,8))
+dist_combos = plt.figure(figsize=(16,8))
+
+# Read saved sample specific treshold
+for i,sample in enumerate(df_params.index):
+
+    # Get params
+    d = df_params.loc[sample].to_dict()
+
+    # Get counts
+    with open(os.path.join(path_data, 'clonal_info', f'{sample}.pickle'), 'rb') as p:
+        COUNTS = pickle.load(p)
+
+    # Filter only QCed cells
+    counts = COUNTS['reference-free']
+    counts = counts.loc[
+        counts['CBC']
+        .isin(meta.query('sample==@sample')
+        .index.map(lambda x: x.split('_')[0]))
+    ].copy()
+
+    # Filter UMIs
+    counts = mark_UMIs(counts, coverage_treshold=int(d['coverage_treshold']), nbins=50)
+
+    # Add viz dist_reads
+    ax = dist_reads.add_subplot(2,4,i+1)
+    viz_UMIs(counts, by='status', ax=ax, nbins=50)
+    ax.set(title=sample)
+
+    # Get combos
+    df_combos = get_combos(counts, gbc_col=f'GBC_{correction_type}')
+
+    # Filtering CBC-GBC
+    M, _ = filter_and_pivot(
+        df_combos, 
+        umi_treshold=umi_treshold, 
+        p_treshold=p_treshold,  
+        max_ratio_treshold=max_ratio_treshold,
+        normalized_abundance_treshold=normalized_abundance_treshold
+    )
+
+    # Add viz dist_combos
+    ax = dist_combos.add_subplot(2,4,i+1)
+    sns.kdeplot(data=df_combos, x='normalized_abundance', y='max_ratio', ax=ax)
+    ax.axvline(x=normalized_abundance_treshold, color='k')
+    ax.axhline(y=max_ratio_treshold, color='k')
+    ax.set(title=sample)
+
+    # GBC sets checks
+    sets = get_clones(M)
+    unique_cells = (M>0).sum(axis=1).loc[lambda x: x==1].index
+    ax.text(.6,.1, f'n cells: {len(unique_cells)}', transform=ax.transAxes)
+    filtered_M = M.loc[unique_cells]
+    clones_df = get_clones(filtered_M)
+    cells_df = (
+        filtered_M
+        .apply(lambda x: filtered_M.columns[x>0][0], axis=1)
+        .to_frame('GBC_set')
+
+    )
+    cells_df.index = cells_df.index.map(lambda x: x + f'_{sample}')
+
+    # Append
+    CELL_DFs.append(cells_df)
+
+
+##
+    
+
+# Save figs and update meta
+dist_reads.tight_layout()
+dist_reads.savefig(os.path.join(path_main, 'results', 'CTCs', 'clonal', 'UMI_tresholds.png'), dpi=300)
+dist_combos.tight_layout()
+dist_combos.savefig(os.path.join(path_main, 'results', 'CTCs', 'clonal', 'filtered_combos.png'), dpi=300)
+
+# New meta
+meta_new = pd.concat(CELL_DFs).join(meta).rename(columns={'GBC_set':'GBC'})
+meta_new['sample'].unique().size
+
+# Add batches and reformat columns
+# batches_df = pd.read_csv(os.path.join(path_data, 'batches.csv'))
+# batches_df.columns = ['sample', 'seq_run', 'infection', 'exp_condition']
+# meta_new = (
+#     meta_new.reset_index()
+#     .merge(batches_df[['sample', 'seq_run', 'infection']], on='sample')
+#     .set_index('CBC')
+#     .drop_duplicates()
+# )
+meta_new['seq_run'] = 'run_1'
+
+# Inspect final metadata
+
+# n cells by seq_run and infection
+(
+    meta_new
+    .query('origin=="lung"')
+    .groupby('seq_run')
+    ['sample'].value_counts()
+    .to_frame('n').reset_index()
+    .groupby('seq_run')['n'].median()
 )
-cbc_gbc_set['clone'] = cbc_gbc_set['GBC_set'].map(d_names)
-cbc_gbc_set['GBC_set'] = cbc_gbc_set['GBC_set'].map(lambda x: ';'.join(x) )
 
-# Filter meta with filtered and clonally annotated cells
-meta = cbc_gbc_set.join(meta, how='left')
-
-meta
-
-meta.groupby(['sample', 'GBC_set']).size()
-
-meta.query('sample=="CTC_2_late"').groupby('clone').size()
-
-meta.query('sample=="CTC_2_late"')['GBC_set'].value_counts()
-
-meta.groupby('sample')['nUMIs'].median()
-
-meta['sample'].value_counts()
-
-
-
-
-# Save final cells
-meta.to_csv(os.path.join(path_data, 'cells_meta.csv'))
-
-
-meta[['sample', 'clone']].groupby(['sample']).value_counts()['CTC_2_late']
-
-meta.query('clone=="C0" and sample=="CTC_2_late"')
-
-meta.query('clone=="C0"').groupby('sample').size()
-
-meta.groupby('GBC_set').size().sort_values(ascending=False)
+# n clones by condition
+(
+    meta_new.groupby('sample')
+    ['GBC'].nunique()
+    .to_frame('nGBC')
+    .reset_index()
+    .merge(
+        meta_new[['sample', 'condition']].drop_duplicates(), 
+        how='left'
+    )
+    .groupby('condition')
+    ['nGBC'].median()
+)
 
 
 ##
 
 
-# Format QC.h5ad
-adata = sc.read(os.path.join(path_data, 'QC.h5ad'))x
-adata = adata[meta.index,:].copy()
-adata.obs = meta
-
-# Write new adata
-adata.write(os.path.join(path_data, 'QC.h5ad'))
+# Save final metadata
+meta_new.to_csv(os.path.join(path_data, 'cells_meta.csv'))
 
 
 ##
-

@@ -37,7 +37,7 @@ embs = (
 df_markers = pd.read_csv(os.path.join(path_data, 'DEGs.csv'), index_col=0)
 
 # Create colors
-cell_state_colors = create_palette(embs, 'cell_state', 'tab20')
+cell_state_colors = create_palette(embs, 'final_cell_state', 'tab20')
 cell_state_colors['Undefined'] = '#E8E7E7'
 
 
@@ -49,7 +49,7 @@ gs = GridSpec(1, 2, figure=fig, width_ratios=[2,2.5])
 
 ax = fig.add_subplot(gs[0])
 draw_embeddings(
-    embs, cat='cell_state', ax=ax, title='Annotated cell states', 
+    embs, cat='final_cell_state', ax=ax, title='Annotated cell states', 
     legend_kwargs={
         'ncols':1, 'colors':cell_state_colors, 
         'bbox_to_anchor':(1,1), 'loc':'upper left'
@@ -82,7 +82,7 @@ fig.savefig(os.path.join(path_results, 'annotated_cell_states.png'), dpi=500)
 # 1. Origin
 fig, axs = plt.subplots(1,2, figsize=(10, 4))
 
-df_ = compute_enrichment(embs, 'cell_state', 'origin', 'PT')
+df_ = compute_enrichment(embs, 'final_cell_state', 'origin', 'PT')
 sns.scatterplot(
     data=df_.sort_values('odds_ratio', ascending=False), 
     y='group', x='odds_ratio', size='perc_in_target', hue='FDR', 
@@ -91,7 +91,7 @@ sns.scatterplot(
 format_ax(ax=axs[0], title='PT enrichment', xlabel='odds ratio', reduce_spines=True)
 axs[0].legend().set_visible(False)
 
-df_ = compute_enrichment(embs, 'cell_state', 'origin', 'lung')
+df_ = compute_enrichment(embs, 'final_cell_state', 'origin', 'lung')
 sns.scatterplot(
     data=df_.sort_values('odds_ratio', ascending=False), 
     y='group', x='odds_ratio', size='perc_in_target', hue='FDR', 
@@ -112,7 +112,7 @@ fig = plt.figure(figsize=(15, 7))
 
 for i,t in enumerate(embs['condition'].cat.categories):
 
-    df_ = compute_enrichment(embs, 'cell_state', 'condition', t)
+    df_ = compute_enrichment(embs, 'final_cell_state', 'condition', t)
     ax = fig.add_subplot(2,3,i+1)
     sns.scatterplot(
         data=df_.sort_values('odds_ratio', ascending=False), 
@@ -137,7 +137,7 @@ fig.savefig(os.path.join(path_results, 'condition_enrichment.png'), dpi=300)
 
 # PAGA
 adata = sanitize_neighbors(adata)
-sc.tl.paga(adata, groups='cell_states', neighbors_key='nn')
+sc.tl.paga(adata, groups='final_cell_state', neighbors_key='nn')
 
 # Network
 fig, ax = plt.subplots(figsize=(7,7))
@@ -147,13 +147,13 @@ fig.tight_layout()
 fig.savefig(os.path.join(path_results, 'paga.png'), dpi=1000)
 
 # Heatmap
-cats = adata.obs['cell_states'].cat.categories
+cats = adata.obs['final_cell_state'].cat.categories
 df_ = pd.DataFrame(adata.uns['paga']['connectivities'].A, index=cats, columns=cats)
 g = plot_clustermap(df_, figsize=(7,5), cb_label='Connectivities', title='PAGA cell states')
 g.fig.savefig(os.path.join(path_results, 'paga_heat.png'), dpi=300)
 
 
-##A
+##
 
 
 # CC
@@ -165,14 +165,13 @@ gs = GridSpec(2, 6, figure=fig, height_ratios=[1,1.5])
 ax = fig.add_subplot(gs[0,1:-1])
 pairs = [
     ['PT, untreated', 'PT, treated'],
-    ['lung, untreated', 'lung, PT-treated'],
-    ['lung, untreated', 'lung, lung-treated'],
-    ['lung, lung-treated', 'lung, double-treated'],
-    ['lung, PT-treated', 'lung, double-treated'],
+    ['lung, untreated', 'lung, single-treated'],
+    ['lung, untreated', 'lung, double-treated'],
+    ['lung, single-treated', 'lung, double-treated'],
 ]
-violin(embs, 'condition', 'cycling', ax=ax, c='darkgrey', with_stats=True, pairs=pairs)
+violin(adata.obs, 'condition', 'cycling', ax=ax, c='darkgrey', with_stats=True, pairs=pairs)
 format_ax(ax, title='Cell cycle signatures scores', 
-          xticks=embs['condition'].cat.categories, ylabel='Score')
+          xticks=adata.obs['condition'].cat.categories, ylabel='Score')
 ax.spines[['left', 'right', 'top']].set_visible(False)
 
 ax = fig.add_subplot(gs[1,:2])

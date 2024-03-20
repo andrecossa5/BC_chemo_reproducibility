@@ -68,35 +68,7 @@ fig.tight_layout()
 plt.show()
 
 
-
-
-
-
-
-
-
-
-
-
-
-# fig.savefig(os.path.join(path_results, 'met_potential.png'), dpi=300)
-
-
 ##
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # n longitudinal with more than <x> cells

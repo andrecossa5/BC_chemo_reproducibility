@@ -1,8 +1,9 @@
 """
-Clonal summary stats plots.
+Basic UMAPs on transcriptional space.
 """
 
 import os
+import pickle
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -38,8 +39,8 @@ embs['GBC_top'] = embs['GBC'].map(lambda x: x if x in top_clones else 'others')
 
 
 # Read clone colors and modify it
-clone_colors = pd.read_csv(os.path.join(path_data, 'clones_colors_sc.csv'), index_col=0)
-clone_colors = clone_colors['color'].to_dict()
+with open(os.path.join(path_data, 'clones_colors_sc.pickle'), 'rb') as f:
+    clone_colors = pickle.load(f)
 clone_colors = { k:clone_colors[k] for k in embs['GBC_top'] if k != 'others'}
 clone_colors['others'] = '#E8E7E7'
 
@@ -99,19 +100,3 @@ fig.savefig(os.path.join(path_results, 'UMAP_1.png'), dpi=500)
 
 
 ##
-
-
-
-colors = create_palette(embs, 'sample', sc.pl.palettes.default_102)
-
-fig, ax = plt.subplots(figsize=(10.5,7))
-draw_embeddings(
-    embs, cat='seq_run', ax=ax, title='', s=3,
-    legend_kwargs={
-        'ncols':1,
-        'bbox_to_anchor':(.9,1), 'loc':'upper left'
-    },
-)
-ax.axis('off')
-fig.tight_layout()
-plt.show()

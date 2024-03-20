@@ -24,7 +24,7 @@ path_results = os.path.join(path_main, 'results', 'MDA', 'clonal')
 
 # Read adata and format degs for dotplot
 adata = sc.read(os.path.join(path_data, 'clustered.h5ad'))
-adata.obs = adata.obs.rename(columns={'cell_states':'cell_state'})
+adata.obs = adata.obs.rename(columns={'final_cell_state':'cell_state'})
 meta = adata.obs
 
 # Take out only clone-sample combos with > 10 cells

@@ -150,7 +150,7 @@ fig.savefig(os.path.join(path_results, 'met_potential.png'), dpi=300)
 df_ = df_.reset_index()
 
 L = []
-origin = "lung"
+origin = "PT"
 for i in range(df_.shape[0]):
     d = df_.iloc[i,:].to_dict()
     dataset = d['dataset']
@@ -158,7 +158,7 @@ for i in range(df_.shape[0]):
     L.append(
         df.query('origin==@origin and dataset==@dataset and GBC==@GBC').shape[0]
     )
-df_['n_lung'] = L
+df_['n_PT'] = L
 
 # Longitudinal clones
 (

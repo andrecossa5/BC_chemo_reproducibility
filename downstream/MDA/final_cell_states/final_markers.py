@@ -3,8 +3,6 @@ Final markers.
 """
 
 import os
-import numpy as np
-import pandas as pd
 import scanpy as sc
 from Cellula.dist_features._dist_features import *
 from Cellula.dist_features._Dist import *
@@ -29,7 +27,7 @@ D = Dist_features(adata, contrasts, jobs=jobs, app=False)
 D.run_all_jobs()
 
 # Save
-degs = D.Results.results['cell_state|genes|wilcoxon']['df']
+degs = D.Results.results['final_cell_state|genes|wilcoxon']['df']
 degs.to_csv(os.path.join(path_data, 'DEGs.csv'))
 
 

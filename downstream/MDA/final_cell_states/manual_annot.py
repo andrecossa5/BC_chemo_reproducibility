@@ -15,8 +15,8 @@ matplotlib.use('macOSX')
 
 
 # Paths
-path_main = '/Users/IEO5505/Desktop/BC_chemo_reproducibility/'
-path_data = os.path.join(path_main, 'data')
+path_main = '/Users/IEO5505/Desktop/BC_chemo_reproducibility'
+path_data = os.path.join(path_main, 'data', 'MDA')
 path_results = os.path.join(path_main, 'results', 'final_cell_states')
 
 
@@ -24,18 +24,14 @@ path_results = os.path.join(path_main, 'results', 'final_cell_states')
 
 
 # Data
-adata = sc.read(os.path.join(path_data, 'subsample.h5ad'))
-df = pd.read_csv(os.path.join(path_data, 'full_embs.csv'), index_col=0)
-cons_clust = pd.read_csv(os.path.join(path_data, '50_NN_0.94_cons_clusters.csv'), index_col=0)
-df['consensus'] = cons_clust['0']
-with open(os.path.join(path_data, 'leiden_markers.pickle'), 'rb') as f:
-    d = pickle.load(f)
-
-# Cat meta columns and cont meta columns
-conts = [ 
-    'nUMIs', 'mito_perc', 'detected_genes', 's_seurat', 
-    'g2m_seurat', 'apoptosis', 'cycle_diff', 'cycling', 'ribo_genes'
-]
+adata = sc.read(os.path.join(path_data, 'clustered.h5ad'))
+embs = pd.read_csv(os.path.join(path_data, 'full_embs.csv'), index_col=0)
+cell_state_map = (
+        pd.read_csv(
+        os.path.join(path_data, 'cell_states_definitive.csv'), 
+        index_col=0
+    )['Cell state'].to_dict()
+)
 
 
 ##
@@ -370,72 +366,79 @@ d_annot = {
 }
 
 # Save
-(
-    pd.Series(d_annot, name='annotation')
-    .reset_index()
-    .rename(columns={'index':'cluster'})
-    .to_csv(os.path.join(path_results, 'annotation.csv'), index=False)
-)
+# (
+#     pd.Series(d_annot, name='annotation')
+#     .reset_index()
+#     .rename(columns={'index':'cluster'})
+#     .to_csv(os.path.join(path_results, 'annotation.csv'), index=False)
+# )
 
 
 ##
 
 
-# Write df.obs cols
-manual_annot = {
+# # Write df.obs cols
+# manual_annot = {
+# 
+#     0 : 'Cycling',
+#     1 : 'IFN/Antigen presentation/TGFbeta',
+#     2: 'Ribosome biogenesis',
+#     3: 'Endocytosis/MT-translation',
+#     4: 'Ras/Survival',
+#     5: 'IFN/undefined',
+#     6: 'Cystatine/Ca2+-metabolism',
+#     7: 'Immune-like',
+#     8: 'IFN/TNFalpha',
+#     9: 'AP1',
+#     10: 'Ribosome biogenesis',
+#     11: 'IFN',
+#     12: 'IFN/growth factor response',
+#     13: 'Glicolysis/Stress-response/Ras-mediated-survival',
+#     14: 'TGFBeta/Epitelial/Wound healing-like',
+#     15: 'Ribosome biogenesis/FA metabolism/GAS5-S100A4',
+#     16: 'OXPHOS/C12orf75',
+#     17: 'Chemotaxis/Migration',
+#     18: 'TGFBeta/ECM'
+# 
+# }
 
-    0 : 'Cycling',
-    1 : 'IFN/Antigen presentation/TGFbeta',
-    2: 'Ribosome biogenesis',
-    3: 'Endocytosis/MT-translation',
-    4: 'Ras/Survival',
-    5: 'IFN/undefined',
-    6: 'Cystatine/Ca2+-metabolism',
-    7: 'Immune-like',
-    8: 'IFN/TNFalpha',
-    9: 'AP1',
-    10: 'Ribosome biogenesis',
-    11: 'IFN',
-    12: 'IFN/growth factor response',
-    13: 'Glicolysis/Stress-response/Ras-mediated-survival',
-    14: 'TGFBeta/Epitelial/Wound healing-like',
-    15: 'Ribosome biogenesis/FA metabolism/GAS5-S100A4',
-    16: 'OXPHOS/C12orf75',
-    17: 'Chemotaxis/Migration',
-    18: 'TGFBeta/ECM'
-
-}
-
-manual_annot_small = {
-
-    0 : 'Cycling',
-    1 : 'IFN',
-    2: 'Ribosome biogenesis',
-    3: 'Endocytosis',
-    4: 'Ras/Survival',
-    5: 'IFN',
-    6: 'Cystatine/Ca2+-metabolism',
-    7: 'Immune-like',
-    8: 'IFN',
-    9: 'AP1',
-    10: 'Ribosome biogenesis',
-    11: 'IFN',
-    12: 'IFN',
-    13: 'Glicolysis',
-    14: 'TGFBeta',
-    15: 'Ribosome biogenesis',
-    16: 'OXPHOS',
-    17: 'Chemotaxis/Migration',
-    18: 'TGFBeta'
-
-}
+# manual_annot_small = {
+# 
+#     0 : 'Cycling',
+#     1 : 'IFN',
+#     2: 'Ribosome biogenesis',
+#     3: 'Endocytosis',
+#     4: 'Ras/Survival',
+#     5: 'IFN',
+#     6: 'Cystatine/Ca2+-metabolism',
+#     7: 'Immune-like',
+#     8: 'IFN',
+#     9: 'AP1',
+#     10: 'Ribosome biogenesis',
+#     11: 'IFN',
+#     12: 'IFN',
+#     13: 'Glicolysis',
+#     14: 'TGFBeta',
+#     15: 'Ribosome biogenesis',
+#     16: 'OXPHOS',
+#     17: 'Chemotaxis/Migration',
+#     18: 'TGFBeta'
+# 
+# }
 
 # Re-annotate
-df['cell_state_highres'] = df['leiden'].map(lambda x: manual_annot[x])
-df['cell_state_lowres'] = df['leiden'].map(lambda x: manual_annot_small[x])
+# df['cell_state_highres'] = df['leiden'].map(lambda x: manual_annot[x])
+# df['cell_state_lowres'] = df['leiden'].map(lambda x: manual_annot_small[x])
 
-# Save
-df.to_csv(os.path.join(path_data, 'full_embs.csv'))
+
+# New, final annot
+adata.obs['leiden'] = adata.obs['leiden'].astype('int')
+adata.obs['final_cell_state'] = adata.obs['leiden'].map(cell_state_map)
+
+# Save clustered and full_embs
+adata.write(os.path.join(path_data, 'clustered.h5ad'))
+embs['final_cell_state'] = adata.obs['final_cell_state']
+embs.to_csv(os.path.join(path_data, 'full_embs.csv'))
 
 
 ##

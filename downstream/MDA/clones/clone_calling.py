@@ -157,7 +157,12 @@ meta_new['sample'].unique().size
 # Add batches and reformat columns
 batches_df = pd.read_csv(os.path.join(path_data, 'batches.csv'))
 batches_df.columns = ['sample', 'seq_run', 'infection', 'exp_condition']
-meta_new = meta_new.merge(batches_df[['sample', 'seq_run', 'infection']], on='sample')
+meta_new = (
+    meta_new.reset_index()
+    .merge(batches_df[['sample', 'seq_run', 'infection']], on='sample')
+    .set_index('CBC')
+    .drop_duplicates()
+)
 
 # Inspect final metadata
 
