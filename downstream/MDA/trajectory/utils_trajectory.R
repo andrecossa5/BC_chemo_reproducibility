@@ -160,6 +160,7 @@ normalize_aggregated_expr <- function(input_expr_df, verbose = F, log = T, scale
     print("Clone-level expression data AFTER normalization")
     invisible(b)
   }
+  
   return(input_expr_df.final)
 }
 
@@ -213,24 +214,34 @@ Run_Lin_regression<-function(LinOut,regress_factor=c("OutLevel.scale","OutLevel_
 
 
 #' Run_Lin_regression_poi
-#' Firstly used in HSC_multiome_Het_2.ipynb
-#' This function was developed based on 
-#' @param LinOut produced by MakeDF4Regress
-#' @param regress_factor  default is c("OutLevel.scale","OutLevel_NPadj.scale","Lym","Mye","MK","ME")
+#' 
+#' Run Poisson regression on clone-level gene expression data
+#' 
+#' @param LinOut input data.frame with clone-level gene expression data plus metastatic potential
+#' @param regress_factor  
 #' @param n.cores  =8
+#' @param qval compute q-values additionally to p-values. Sometimes q-values computation is not successful. Keep p-values then.
+#' @param tot_UMIs include total n. of UMIs x clone instead of median. This allows to have a functioning poi model.
 #' @export
 #' @import foreach doParallel 
 Run_Lin_regression_poi<-function(LinOut, 
                                  regress_factor = c("met_potential"),
-                                 n.cores = 8){
+                                 n.cores = 8, 
+                                 qval = F, 
+                                 tot_UMIs = F){ 
   library(dplyr)
   library(foreach)
   library(doParallel)
   library(qvalue)
   
-  #colnames(LinOut$mtx.clone)<-gsub("-","_",colnames(LinOut$mtx.clone))
-  #colnames(LinOut$mtx.clone)<-gsub("/","_",colnames(LinOut$mtx.clone))
   genes=colnames(LinOut)[14:ncol(LinOut)]
+  
+  # To allow the model to correct for clone-size, compute total n. of counts x clone
+  if(tot_UMIs == T){
+    clonesize.umi <- LinOut[,14:dim(LinOut)[2]] %>% rowSums 
+    LinOut <- LinOut %>% mutate(tot_UMIs = clonesize.umi) %>% 
+      relocate(., tot_UMIs, .after = nUMIs)
+  }
   
   # used to set up a parallel computing environment
   my.cluster <- parallel::makeCluster(n.cores) # This command creates a cluster of worker processes for parallel computation. n.cores specifies the number of CPU cores you want to use for parallel computation.
@@ -241,7 +252,11 @@ Run_Lin_regression_poi<-function(LinOut,
     ps<-c()
     slopes<-c()
     for(i in 1:length(regress_factor)){ # For each factor for which we want to perform poi regression (i.e. for us, only clonal fitness)
-      f<-as.formula(paste(gene,"~",regress_factor,"+ log(nUMIs)")[i]) 
+      if(tot_UMIs == T){
+        f<-as.formula(paste(gene,"~",regress_factor,"+ log(tot_UMIs)")[i])
+      }else{
+        f<-as.formula(paste(gene,"~",regress_factor,"+ log(nUMIs)")[i])
+      }
       md<-glm(f,data=LinOut,family=poisson(link="log"))
       md.summary<-summary(md)
       slope<-md.summary$coefficients[2,1] # Save slope from fitted model
@@ -263,15 +278,18 @@ Run_Lin_regression_poi<-function(LinOut,
     slopes<-sapply(res,function(x){x[[3]]}) %>% as.data.frame
   }
   
-  #genes<-gsub("_","-",genes)
   row.names(ps)<-genes
   row.names(slopes)<-genes
   colnames(ps)<-regress_factor
   colnames(slopes)<-regress_factor
-
-  qs<-apply(ps,2,function(x){qvalue(x)$qvalues})  %>% as.data.frame
   
-  return(list(ps=ps,qs=qs,slopes=slopes))
+  # Save either q-values of p-values based on choice 
+  if(qval == F){
+    return(list(ps=ps,slopes=slopes))  
+  }else{
+    qs<-apply(ps,2,function(x){qvalue(x)$qvalues})  %>% as.data.frame
+    return(list(ps=ps,qs=qs,slopes=slopes))
+  }
 }
 
 
@@ -287,11 +305,14 @@ Run_Lin_regression_poi<-function(LinOut,
 #' @import foreach doParallel 
 Run_Lin_regression_poi.for_condition<-function(LinOut, 
                                  regress_factor = c("met_potential"),
-                                 n.cores = 8){
+                                 n.cores = 8, 
+                                 qval = F, 
+                                 tot_UMIs = T){
   library(dplyr)
   library(foreach)
   library(doParallel)
   library(qvalue)
+  
   
   # Split data.frame based on experimental condition
   LinOut <- LinOut %>% mutate(exp_condition = str_sub(LinOut$dataset, end = -3)) %>% 
@@ -305,6 +326,13 @@ Run_Lin_regression_poi.for_condition<-function(LinOut,
 
     genes=colnames(LinOut_split_cond)[15:ncol(LinOut_split_cond)]
     
+    # To allow the model to correct for clone-size, compute total n. of counts x clone
+    if(tot_UMIs == T){
+      clonesize.umi <- LinOut_split_cond[,15:dim(LinOut_split_cond)[2]] %>% rowSums 
+      LinOut_split_cond <- LinOut_split_cond %>% mutate(tot_UMIs = clonesize.umi) %>% 
+        relocate(., tot_UMIs, .after = nUMIs)
+    }
+    
     # used to set up a parallel computing environment
     my.cluster <- parallel::makeCluster(n.cores) # This command creates a cluster of worker processes for parallel computation. n.cores specifies the number of CPU cores you want to use for parallel computation.
     print(my.cluster)
@@ -314,7 +342,11 @@ Run_Lin_regression_poi.for_condition<-function(LinOut,
       ps<-c()
       slopes<-c()
       for(i in 1:length(regress_factor)){ # For each factor for which we want to perform poi regression (i.e. for us, only clonal fitness)
-        f<-as.formula(paste(gene,"~",regress_factor,"+ log(nUMIs)")[i]) 
+        if(tot_UMIs == T){
+          f<-as.formula(paste(gene,"~",regress_factor,"+ log(tot_UMIs)")[i])
+        }else{
+          f<-as.formula(paste(gene,"~",regress_factor,"+ log(nUMIs)")[i])
+        }
         md<-glm(f,data=LinOut_split_cond,family=poisson(link="log"))
         md.summary<-summary(md)
         slope<-md.summary$coefficients[2,1] # Save slope from fitted model
@@ -341,12 +373,234 @@ Run_Lin_regression_poi.for_condition<-function(LinOut,
     colnames(ps)<-regress_factor
     colnames(slopes)<-regress_factor
     
-    qs<-apply(ps,2,function(x){qvalue(x)$qvalues})  %>% as.data.frame
-    
-    #return(list(ps=ps,qs=qs,slopes=slopes))
-    res_x_cond[[exp_cond]] <- list(ps=ps,qs=qs,slopes=slopes)
+    # Save either q-values of p-values based on choice 
+    if(qval == F){
+      res_x_cond[[exp_cond]] <- list(ps=ps,slopes=slopes)
+    }else{
+      qs<-apply(ps,2,function(x){qvalue(x)$qvalues})  %>% as.data.frame
+      res_x_cond[[exp_cond]] <- list(ps=ps,qs=qs,slopes=slopes)
+    }
   }
   return(res_x_cond)
+}
+
+
+#' Run_Lin_regression_poi
+#' 
+#' This function was developed based on 
+#' @param LinOut 
+#' @param regress_factor  default is 
+#' @param n.cores  =8
+#' @export
+#' @import foreach doParallel 
+Run_Lin_regression_nb.for_condition<-function(LinOut, 
+                                               regress_factor = c("met_potential"),
+                                               n.cores = 8, 
+                                               qval = F, 
+                                               tot_UMIs = T){
+  library(dplyr)
+  library(foreach)
+  library(doParallel)
+  library(qvalue)
+  
+  
+  # Split data.frame based on experimental condition
+  LinOut <- LinOut %>% mutate(exp_condition = str_sub(LinOut$dataset, end = -3)) %>% 
+    relocate(., exp_condition, .after = dataset) 
+  LinOut_split <- split(LinOut, LinOut$exp_condition)
+  
+  res_x_cond <- list()
+  for(exp_cond in names(LinOut_split)){
+    # Run regression based on experimental condition
+    LinOut_split_cond <- LinOut_split[[exp_cond]]
+    
+    genes=colnames(LinOut_split_cond)[15:ncol(LinOut_split_cond)]
+    
+    # To allow the model to correct for clone-size, compute total n. of counts x clone
+    if(tot_UMIs == T){
+      clonesize.umi <- LinOut_split_cond[,15:dim(LinOut_split_cond)[2]] %>% rowSums 
+      LinOut_split_cond <- LinOut_split_cond %>% mutate(tot_UMIs = clonesize.umi) %>% 
+        relocate(., tot_UMIs, .after = nUMIs)
+    }
+    
+    # used to set up a parallel computing environment
+    my.cluster <- parallel::makeCluster(n.cores) # This command creates a cluster of worker processes for parallel computation. n.cores specifies the number of CPU cores you want to use for parallel computation.
+    print(my.cluster)
+    doParallel::registerDoParallel(cl = my.cluster) # This command registers the parallel backend for the foreach package, allowing you to execute foreach loops in parallel.
+    
+    res<-foreach(gene=genes[1:length(genes)]) %dopar%{
+      ps<-c()
+      slopes<-c()
+      for(i in 1:length(regress_factor)){ # For each factor for which we want to perform poi regression (i.e. for us, only clonal fitness)
+        if(tot_UMIs == T){
+          f<-as.formula(paste(gene,"~",regress_factor,"+ log(tot_UMIs)")[i])
+        }else{
+          f<-as.formula(paste(gene,"~",regress_factor,"+ log(nUMIs)")[i])
+        }
+        md<-MASS::glm.nb(f,data=LinOut_split_cond)
+        md.summary<-summary(md)
+        slope<-md.summary$coefficients[2,1] # Save slope from fitted model
+        p<-md.summary$coefficients[2,4] # Save p-value
+        slopes<-c(slopes,slope) # Store each slope, of model fitted on gene ~ each regress_factor
+        ps<-c(ps,p) # Store each p-value
+      }
+      return(list(Gene=gene,ps=ps,slopes=slopes)) # res will be a list of lists (?)
+    }
+    parallel::stopCluster(cl = my.cluster)
+    
+    if(length(regress_factor) > 1){
+      genes<-sapply(res,function(x){x[[1]]})
+      ps<-sapply(res,function(x){x[[2]]}) %>% t %>% as.data.frame 
+      slopes<-sapply(res,function(x){x[[3]]}) %>% t %>% as.data.frame    
+    } else if(length(regress_factor) == 1){
+      genes<-sapply(res,function(x){x[[1]]})
+      ps<-sapply(res,function(x){x[[2]]}) %>% as.data.frame 
+      slopes<-sapply(res,function(x){x[[3]]}) %>% as.data.frame
+    }
+    
+    row.names(ps)<-genes
+    row.names(slopes)<-genes
+    colnames(ps)<-regress_factor
+    colnames(slopes)<-regress_factor
+    
+    # Save either q-values of p-values based on choice 
+    if(qval == F){
+      res_x_cond[[exp_cond]] <- list(ps=ps,slopes=slopes)
+    }else{
+      qs<-apply(ps,2,function(x){qvalue(x)$qvalues})  %>% as.data.frame
+      res_x_cond[[exp_cond]] <- list(ps=ps,qs=qs,slopes=slopes)
+    }
+  }
+  return(res_x_cond)
+}
+
+
+
+#' Run_Lin_regression_nb
+#' 
+#' Run Negative Binomial regression on clone-level gene expression data
+#' Negative Binomial reg. is more suitable then Poisson reg. when overdispersion is present
+#' 
+#' @param LinOut input data.frame with clone-level gene expression data plus metastatic potential
+#' @param regress_factor  
+#' @param n.cores  =8
+#' @param qval compute q-values additionally to p-values. Sometimes q-values computation is not successful. Keep p-values then.
+#' @param tot_UMIs include total n. of UMIs x clone instead of median. This allows to have a functioning poi model.
+#' @export
+#' @import foreach doParallel 
+Run_Lin_regression_nb<-function(LinOut, 
+                                regress_factor = c("met_potential"),
+                                n.cores = 8,
+                                qval = F, 
+                                tot_UMIs = T){
+  library(dplyr)
+  library(foreach)
+  library(doParallel)
+  library(qvalue)
+  library(MASS)
+  
+  genes=colnames(LinOut)[14:ncol(LinOut)]
+  
+  # To allow the model to correct for clone-size, compute total n. of counts x clone
+  if(tot_UMIs == T){
+    clonesize.umi <- LinOut[,14:dim(LinOut)[2]] %>% rowSums 
+    LinOut <- LinOut %>% mutate(tot_UMIs = clonesize.umi) %>% 
+      relocate(., tot_UMIs, .after = nUMIs)
+  }
+  
+  # used to set up a parallel computing environment
+  my.cluster <- parallel::makeCluster(n.cores) # This command creates a cluster of worker processes for parallel computation. n.cores specifies the number of CPU cores you want to use for parallel computation.
+  print(my.cluster)
+  doParallel::registerDoParallel(cl = my.cluster) # This command registers the parallel backend for the foreach package, allowing you to execute foreach loops in parallel.
+  
+  res<-foreach(gene=genes[1:length(genes)]) %dopar%{
+    ps<-c()
+    slopes<-c()
+    for(i in 1:length(regress_factor)){ # For each factor for which we want to perform poi regression (i.e. for us, only clonal fitness)
+      if(tot_UMIs == T){
+        f<-as.formula(paste(gene,"~",regress_factor,"+ log(tot_UMIs)")[i])
+      }else{
+        f<-as.formula(paste(gene,"~",regress_factor,"+ log(nUMIs)")[i])
+      }
+      md<-MASS::glm.nb(f,data=LinOut)
+      md.summary<-summary(md)
+      slope<-md.summary$coefficients[2,1] # Save slope from fitted model
+      p<-md.summary$coefficients[2,4] # Save p-value
+      slopes<-c(slopes,slope) # Store each slope, of model fitted on gene ~ each regress_factor
+      ps<-c(ps,p) # Store each p-value
+    }
+    return(list(Gene=gene,ps=ps,slopes=slopes)) # res will be a list of lists (?)
+  }
+  parallel::stopCluster(cl = my.cluster)
+  
+  if(length(regress_factor) > 1){
+    genes<-sapply(res,function(x){x[[1]]})
+    ps<-sapply(res,function(x){x[[2]]}) %>% t %>% as.data.frame 
+    slopes<-sapply(res,function(x){x[[3]]}) %>% t %>% as.data.frame    
+  } else if(length(regress_factor) == 1){
+    genes<-sapply(res,function(x){x[[1]]})
+    ps<-sapply(res,function(x){x[[2]]}) %>% as.data.frame 
+    slopes<-sapply(res,function(x){x[[3]]}) %>% as.data.frame
+  }
+  
+  row.names(ps)<-genes
+  row.names(slopes)<-genes
+  colnames(ps)<-regress_factor
+  colnames(slopes)<-regress_factor
+  
+  # Save either q-values of p-values based on choice 
+  if(qval == F){
+    return(list(ps=ps,slopes=slopes))  
+  }else{
+    qs<-apply(ps,2,function(x){qvalue(x)$qvalues})  %>% as.data.frame
+    return(list(ps=ps,qs=qs,slopes=slopes))
+  }
+}
+
+
+
+#' Volcano plot of results
+#' 
+#' Plot a Volcano with q-value ~ slopes of genes resulting from poi regression
+#' 
+#' @param 
+#' @return 
+PlotLinRegress_Vocano <- function(LinOut.result.df, slot = "qs", pline = 0.001, qline = 0.05){
+  library(ggpubr)
+  library(purrr)
+  
+  datatoplot <- LinOut.result.df
+  ifelse(slot == "qs", datatoplot <- datatoplot %>% mutate(score = -log(qs)*abs(slopes)), 
+         datatoplot <- datatoplot %>% mutate(score = -log(ps)*abs(slopes)))
+  
+  #Label <- subset(datatoplot, qs < 0.2) %>% .[order(.$score,decreasing=T),] %>% .[1:80,] %>% .[, "genes"]
+  #slope.L <- subset(datatoplot, qs < 0.2)$slopes %>% min
+  #slope.R <- subset(datatoplot,qs < 0.2)$slopes %>% max
+  Label <- datatoplot[order(datatoplot$score,decreasing=T),] %>% .[1:80,] %>% .[, "genes"]
+  slope.L <- datatoplot$slopes %>% min
+  slope.R <- datatoplot$slopes %>% max
+  datatoplot$Label <- ifelse(datatoplot$genes %in% Label, datatoplot$genes, "")
+  Name = "volcano"
+  
+  if(slot=="qs"){    
+    p <- ggplot(datatoplot)+aes(slopes, -log10(qs), label = Label)+
+      geom_point()+
+      geom_hline(yintercept=-log10(qline),linetype=2)+
+      geom_vline(xintercept=c(-0.02,0.02),linetype=2)+
+      xlim(slope.L-0.1,slope.R+0.1)+
+      geom_text_repel(force = 2,size=5)+theme_pubr()+ggtitle(Name)
+  }else{
+    # Cap p-values to min p-value to avoid having zeros (leading to -log10(0) = Inf)
+    datatoplot$ps[datatoplot$ps == 0] <- min(datatoplot$ps[datatoplot$ps != 0])
+    pval.top <- -log10(datatoplot$ps) %>% max()
+    p <- ggplot(datatoplot)+aes(slopes,-log10(ps),label=Label)+
+      geom_point()+
+      geom_hline(yintercept=-log10(pline),linetype=2)+
+      geom_vline(xintercept=c(-0.02,0.02),linetype=2)+
+      xlim(slope.L-0.1,slope.R+0.1)+
+      ylim(0, pval.top+0.1)+
+      geom_text_repel(force = 2,size=5)+theme_pubr()+ggtitle(Name)
+  }
 }
 
 
