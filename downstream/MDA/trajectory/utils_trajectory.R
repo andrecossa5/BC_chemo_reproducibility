@@ -287,7 +287,7 @@ Run_Lin_regression_poi<-function(LinOut,
   if(qval == F){
     return(list(ps=ps,slopes=slopes))  
   }else{
-    qs<-apply(ps,2,function(x){qvalue(x)$qvalues})  %>% as.data.frame
+    qs <- apply(ps, 2, function(x){p.adjust(x, method = "BH")})  %>% as.data.frame
     return(list(ps=ps,qs=qs,slopes=slopes))
   }
 }
@@ -377,7 +377,8 @@ Run_Lin_regression_poi.for_condition<-function(LinOut,
     if(qval == F){
       res_x_cond[[exp_cond]] <- list(ps=ps,slopes=slopes)
     }else{
-      qs<-apply(ps,2,function(x){qvalue(x)$qvalues})  %>% as.data.frame
+      print("computing q-values")
+      qs <- apply(ps, 2, function(x){p.adjust(x, method = "BH")})  %>% as.data.frame
       res_x_cond[[exp_cond]] <- list(ps=ps,qs=qs,slopes=slopes)
     }
   }
@@ -467,7 +468,7 @@ Run_Lin_regression_nb.for_condition<-function(LinOut,
     if(qval == F){
       res_x_cond[[exp_cond]] <- list(ps=ps,slopes=slopes)
     }else{
-      qs<-apply(ps,2,function(x){qvalue(x)$qvalues})  %>% as.data.frame
+      qs <- apply(ps, 2, function(x){p.adjust(x, method = "BH")})  %>% as.data.frame
       res_x_cond[[exp_cond]] <- list(ps=ps,qs=qs,slopes=slopes)
     }
   }
@@ -552,7 +553,7 @@ Run_Lin_regression_nb<-function(LinOut,
   if(qval == F){
     return(list(ps=ps,slopes=slopes))  
   }else{
-    qs<-apply(ps,2,function(x){qvalue(x)$qvalues})  %>% as.data.frame
+    qs <- apply(ps, 2, function(x){p.adjust(x, method = "BH")})  %>% as.data.frame
     return(list(ps=ps,qs=qs,slopes=slopes))
   }
 }
@@ -582,12 +583,16 @@ PlotLinRegress_Vocano <- function(LinOut.result.df, slot = "qs", pline = 0.001, 
   datatoplot$Label <- ifelse(datatoplot$genes %in% Label, datatoplot$genes, "")
   Name = "volcano"
   
-  if(slot=="qs"){    
+  if(slot=="qs"){
+    # Cap q-values to min q-value to avoid having zeros (leading to -log10(0) = Inf)
+    datatoplot$qs[datatoplot$qs == 0] <- min(datatoplot$qs[datatoplot$qs != 0])
+    qval.top <- -log10(datatoplot$qs) %>% max()
     p <- ggplot(datatoplot)+aes(slopes, -log10(qs), label = Label)+
       geom_point()+
       geom_hline(yintercept=-log10(qline),linetype=2)+
       geom_vline(xintercept=c(-0.02,0.02),linetype=2)+
       xlim(slope.L-0.1,slope.R+0.1)+
+      ylim(0, qval.top+0.1)+
       geom_text_repel(force = 2,size=5)+theme_pubr()+ggtitle(Name)
   }else{
     # Cap p-values to min p-value to avoid having zeros (leading to -log10(0) = Inf)
