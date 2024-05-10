@@ -140,3 +140,6 @@ dmypy.json
 meta
 data
 results
+
+.DS_Store
+.Rhistory
