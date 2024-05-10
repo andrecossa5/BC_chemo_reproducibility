@@ -9,7 +9,7 @@ import pickle
 import numpy as np
 import pandas as pd
 import textalloc as ta
-from plotting_utils
+from plotting_utils._plotting_base import *
 matplotlib.use('macOSX')
 
 

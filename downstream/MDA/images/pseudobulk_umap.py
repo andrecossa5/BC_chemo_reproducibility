@@ -22,9 +22,11 @@ path_results = os.path.join(path_main, 'results', 'MDA', 'pseudobulk')
 
 # Read clustered
 clustered = sc.read(os.path.join(path_data, 'clustered.h5ad'))
-clustered.obs['GBC_sample'] = clustered.obs['GBC'].astype(str) + \
-                              clustered.obs['sample'].astype(str)
+clustered.obs['GBC_sample'] = clustered.obs['GBC'].astype(str) + clustered.obs['sample'].astype(str)
 GBC_size = clustered.obs.groupby('GBC_sample').size().loc[lambda x: x>=10]
+
+# Aggregate and save...
+#...
 
 # Read aggregated clone table
 df = pd.read_csv(os.path.join(path_data, 'agg_pseudobulk.csv'), index_col=0)
@@ -78,7 +80,6 @@ df_embs.to_csv(os.path.join(path_data, 'embs_pseudo.csv'))
 
 # Viz 
 fig, ax = plt.subplots(figsize=(6.5,5))
-
 scatter(
     df_embs, x='UMAP1', y='UMAP2', c=condition_colors, 
     by='condition', a=.5, s='size', scale_x=.7, ax=ax

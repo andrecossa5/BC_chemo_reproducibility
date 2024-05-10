@@ -71,29 +71,24 @@ plt.show()
 ##
 
 
-# n longitudinal with more than <x> cells
-df = df.reset_index()
-
-
-# Change...
-L = []
-origin = "lung"
-for i in range(df.shape[0]):
-    d = df.iloc[i,:].to_dict()
-    dataset = d['dataset']
-    GBC = d['GBC']
-    L.append(
-        df.query('origin==@origin and dataset==@dataset and GBC==@GBC').shape[0]
-    )
-df['n_lung'] = L
-
 # Longitudinal clones
 (
     df
-    .query('n_PT>=10 and n_lung>=10')
+~
     .sort_values('met_potential', ascending=False)
     .to_csv(os.path.join(path_data, 'longitudinal_clones.csv'), index=False)
 )
+
+
+##
+
+
+# Merge with agg
+agg = pd.read_csv(os.path.join(path_data, 'agg.csv'), index_col=0)
+agg['GBC'] = agg.index.map(lambda x: x[:18])
+agg.reset_index().merge(df, on=['GBC','dataset'])
+df = df.merge(agg.reset_index(drop=True), on=['GBC','dataset']).loc[lambda x: x['origin'] =='PT'].set_index('GBC')
+df.to_csv('agg_for_poisson.csv')
 
 
 ##
