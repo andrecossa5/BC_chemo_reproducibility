@@ -12,9 +12,8 @@ from scipy.sparse import csr_matrix
 from GenKI.dataLoader import DataLoader
 from GenKI.train import VGAE_trainer
 from GenKI import utils
-from plotting_utils._plotting_base import *
+from plotting_utils._utils import *
 from gseapy import enrichr
-matplotlib.use('macOSX')
 
 
 ##
@@ -151,9 +150,9 @@ def main():
     ).results
 
     # Save
-    os.mkdir(os.path.join(path_results, gene))
+    make_folder(path_results, gene, overwrite=True)
     gene_list_df.to_csv(os.path.join(path_results, gene, 'KO_genes.csv'))
-    ORA_df.set_index('Gene_set').to_csv(os.path.join(path_results, 'KO_genes_ORA.csv'), index_col=0)
+    ORA_df.set_index('Gene_set').to_csv(os.path.join(path_results, 'KO_genes_ORA.csv'))
 
 
 ##
