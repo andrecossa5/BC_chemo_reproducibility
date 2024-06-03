@@ -152,7 +152,7 @@ def main():
     # Save
     make_folder(path_results, gene, overwrite=True)
     gene_list_df.to_csv(os.path.join(path_results, gene, 'KO_genes.csv'))
-    ORA_df.set_index('Gene_set').to_csv(os.path.join(path_results, 'KO_genes_ORA.csv'))
+    ORA_df.set_index('Gene_set').to_csv(os.path.join(path_results, gene, 'KO_genes_ORA.csv'))
 
 
 ##
