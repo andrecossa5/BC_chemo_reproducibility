@@ -6,7 +6,7 @@ import os
 import pickle
 from Cellula.plotting._colors import *
 from Cellula.plotting._plotting_base import *
-from Cellula.plotting._plotting import *
+from Cel_+lula.plotting._plotting import *
 from BC_chemo_utils.tests import *
 matplotlib.use('macOSX')
 

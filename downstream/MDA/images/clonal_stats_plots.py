@@ -146,27 +146,19 @@ fig.savefig(os.path.join(path_results, 'met_potential.png'), dpi=300)
 ##
 
 
-# n longitudinal with more than ... cells
-df_ = df_.reset_index()
-
-L = []
-origin = "PT"
-for i in range(df_.shape[0]):
-    d = df_.iloc[i,:].to_dict()
-    dataset = d['dataset']
-    GBC = d['GBC']
-    L.append(
-        df.query('origin==@origin and dataset==@dataset and GBC==@GBC').shape[0]
+# Longitudinal with more than 10 cells
+df_ = (
+    df.groupby(["GBC", "dataset", "origin"]).size().reset_index(name="cell_count")
+    .assign(frequency=lambda x: 
+        x.groupby(["dataset", "origin"])["cell_count"].transform(lambda x: x / x.sum())
     )
-df_['n_PT'] = L
-
-# Longitudinal clones
-(
-    df_
-    .query('n_PT>=10 and n_lung>=10')
-    .sort_values('met_potential', ascending=False)
-    .to_csv(os.path.join(path_data, 'longitudinal_clones.csv'), index=False)
 )
+df_ = df_.pivot_table(columns=['origin'], index=['GBC', 'dataset'], values='cell_count', fill_value=0).reset_index().merge(
+    df_.pivot_table(columns=['origin'], index=['GBC', 'dataset'], values='frequency', fill_value=0).reset_index(),
+    on=['GBC', 'dataset'], suffixes=['_count', '_freq']
+)
+df_ = df_.query('PT_count>=10 and lung_count>=10')
+df_.to_csv(os.path.join(path_data, 'longitudinal_clones.csv'))
 
 
 ##

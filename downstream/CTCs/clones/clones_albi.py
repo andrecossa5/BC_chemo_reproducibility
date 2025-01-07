@@ -22,7 +22,7 @@ df = (
     .to_frame('Prevalence').reset_index()
     .pivot_table(index='GBC', columns='sample', fill_value=0)
 )
-# df.to_csv(os.path.join(path_data, 'clones_albi.csv'))
+df.to_csv(os.path.join(path_data, 'clones_albi.csv'))
 
 
 ##
