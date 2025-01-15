@@ -89,5 +89,3 @@ fig.savefig(os.path.join(path_results, 'bubbles_sc.png'), dpi=300)
 
 ##
 
-##
-
