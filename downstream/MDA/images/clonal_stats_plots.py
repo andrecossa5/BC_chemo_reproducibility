@@ -147,7 +147,11 @@ df_long['condition_dataset'] = np.select([
 x = 1
 
 # n total clones in PT (n cells>=min n cells)
-df_summary = df_long.query('PT_count>=@x').groupby(['condition_dataset', 'dataset'])['GBC'].nunique().to_frame('n total clones (PT)')
+df_summary = (
+    df_long.query('PT_count>=@x')
+    .groupby(['condition_dataset', 'dataset'])['GBC'].nunique()
+    .to_frame('n total clones (PT)')
+)
 
 # n total clones in lung (n cells>=min n cells)
 df_summary = df_summary.join(
@@ -191,15 +195,8 @@ df_lungs = df_stats_sample.query('origin=="lung"')[['dataset', 'min_freq', 'max_
 df_lungs.columns = ['dataset'] + [ f'{x} (lung)' for x in df_lungs.columns[1:] ]
 df_summary = df_summary.merge(df_lungs, on='dataset')
 
-
-
 df_summary = df_summary.set_index(['condition_dataset', 'dataset']).T
 df_summary.to_csv(os.path.join(path_results, 'clonal_stats_summary.csv'))
-
-
-
-
-
 df_summary
 
 
@@ -207,110 +204,58 @@ df_summary
 
 
 # Other 
-# t = [0,1,2,5,10]
+t = [0,1,2,5,10]
 
 
 # n prometastatic clones
+d = {}
+for x in t:
+    d[x] = df_long.query('PT_count>@x and lung_count>@x').groupby('condition_dataset')['GBC'].nunique().to_dict()
+df_plot = pd.DataFrame(d).reset_index(names='condition_dataset').melt(id_vars=['condition_dataset'], var_name='min n cell', value_name='n pro-metastatic clones')
+df_plot['condition_dataset'] = pd.Categorical(df_plot['condition_dataset'], categories=['Non treated', 'Adj', 'Neo + Adj'])
 
+fig, ax = plt.subplots(figsize=(4,4))
+colors = create_palette(df_plot, 'condition_dataset', 'Reds') 
+sns.barplot(data=df_plot, x='min n cell', y='n pro-metastatic clones', hue='condition_dataset', palette=colors, ax=ax)
+fig.tight_layout()
+plt.show()
+fig.savefig(os.path.join(path_results, 'n pro-metastatic clones.png'), dpi=300)
 
+# % of prometastatic clones
+d = {}
+for x in t:
+    n = df_long.query('PT_count>@x and lung_count>@x').groupby('condition_dataset')['GBC'].nunique() / \
+        df_long.query('PT_count>0').groupby('condition_dataset')['GBC'].nunique()
+    d[x] = np.round(n,2).to_dict()
+df_plot = pd.DataFrame(d).reset_index(names='condition_dataset').melt(id_vars=['condition_dataset'], var_name='min n cell', value_name='% pro-metastatic clones')
+df_plot['condition_dataset'] = pd.Categorical(df_plot['condition_dataset'], categories=['Non treated', 'Adj', 'Neo + Adj'])
 
+fig, ax = plt.subplots(figsize=(4,4))
+colors = create_palette(df_plot, 'condition_dataset', 'Reds') 
+sns.barplot(data=df_plot, x='min n cell', y='% pro-metastatic clones', hue='condition_dataset', palette=colors, ax=ax)
+fig.tight_layout()
+plt.show()
+fig.savefig(os.path.join(path_results, '% pro-metastatic clones.png'), dpi=300)
+ 
+# % of prometastatic clones, aggregated by mice and condition
+L = []
+for x in t:
+    n = df_long.query('PT_count>@x and lung_count>@x').groupby(['condition', 'dataset'])['GBC'].nunique() / \
+        df_long.query('PT_count>0').groupby(['condition', 'dataset'])['GBC'].nunique()
+    n = n.loc[lambda x: ~x.isna()]
+    n = n.reset_index().assign(min_n_cell=x).rename(columns={'GBC':'% pro-metastatic clones', 'min_n_cell':'min n cell'})
+    L.append(n)
+df_plot = pd.concat(L)
+df_plot['condition'] = pd.Categorical(df_plot['condition'], categories=['Non treated', 'Adjuvant treated', 'Double treated'])
 
+df_plot.loc[df_plot['min n cell']==10]
 
+fig, ax = plt.subplots(figsize=(4,4))
+colors = create_palette(df_plot, 'condition', 'Reds') 
+sns.barplot(data=df_plot, x='min n cell', y='% pro-metastatic clones', hue='condition', palette=colors, ax=ax)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, '% pro-metastatic clone by mice.png'), dpi=300)
 
-
-
-
-
-# d = {}
-# for x in t:
-#     d[x] = df_.query('PT_count>@x and lung_count>@x').groupby('condition')['GBC'].nunique().to_dict()
-# df_plot = pd.DataFrame(d).reset_index(names='condition').melt(id_vars=['condition'], var_name='min n cell', value_name='n pro-metastatic clones')
-# df_plot['condition'] = pd.Categorical(df_plot['condition'], categories=['Non treated', 'Adjuvant treated', 'Double treated'])
-# 
-# fig, ax = plt.subplots(figsize=(4,4))
-# colors = create_palette(df_plot, 'condition', 'Reds') 
-# sns.barplot(data=df_plot, x='min n cell', y='n pro-metastatic clones', hue='condition', palette=colors, ax=ax)
-# fig.tight_layout()
-# fig.savefig(os.path.join(path_results, 'n pro-metastatic clones.png'), dpi=300)
-# 
-# #
-# 
-# # % of prometastatic clones
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# d = {}
-# for x in t:
-#     n = df_.query('PT_count>@x and lung_count>@x').groupby('condition')['GBC'].nunique() / \
-#         df_.query('PT_count>0').groupby('condition')['GBC'].nunique()
-#     d[x] = np.round(n,2).to_dict()
-# df_plot = pd.DataFrame(d).reset_index(names='condition').melt(id_vars=['condition'], var_name='min n cell', value_name='% pro-metastatic clones')
-# df_plot['condition'] = pd.Categorical(df_plot['condition'], categories=['Non treated', 'Adjuvant treated', 'Double treated'])
-# 
-# fig, ax = plt.subplots(figsize=(4,4))
-# colors = create_palette(df_plot, 'condition', 'Reds') 
-# sns.barplot(data=df_plot, x='min n cell', y='% pro-metastatic clones', hue='condition', palette=colors, ax=ax)
-# fig.tight_layout()
-# fig.savefig(os.path.join(path_results, '% pro-metastatic clones.png'), dpi=300)
-# 
-# 
-# 
-# #
-# 
-# # % of prometastatic clones
-# d = {}
-# for x in t:
-#     n = df_.query('PT_count>0').groupby('condition')['GBC'].nunique()
-#     d[x] = np.round(n,2).to_dict()
-# df_plot = pd.DataFrame(d).reset_index(names='condition').melt(id_vars=['condition'], var_name='min n cell', value_name='% pro-metastatic clones')
-# df_plot['condition'] = pd.Categorical(df_plot['condition'], categories=['Non treated', 'Adjuvant treated', 'Double treated'])
-# 
-# df_plot.loc[df_plot['min n cell']==10]
-# 
-# 
-# fig, ax = plt.subplots(figsize=(4,4))
-# colors = create_palette(df_plot, 'condition', 'Reds') 
-# sns.barplot(data=df_plot, x='min n cell', y='% pro-metastatic clones', hue='condition', palette=colors, ax=ax)
-# fig.tight_layout()
-# fig.savefig(os.path.join(path_results, '% pro-metastatic clones.png'), dpi=300)
-# 
-# 
-# 
-# #
-# 
-# # % of prometastatic clones, aggregated by mice and condition
-# L = []
-# for x in t:
-#     n = df_.query('PT_count>@x and lung_count>@x').groupby(['condition', 'dataset'])['GBC'].nunique() / \
-#         df_.query('PT_count>0').groupby(['condition', 'dataset'])['GBC'].nunique()
-#     n = n.loc[lambda x: ~x.isna()]
-#     n = n.reset_index().assign(min_n_cell=x).rename(columns={'GBC':'% pro-metastatic clones', 'min_n_cell':'min n cell'})
-#     L.append(n)
-# df_plot = pd.concat(L)
-# df_plot['condition'] = pd.Categorical(df_plot['condition'], categories=['Non treated', 'Adjuvant treated', 'Double treated'])
-# 
-# df_plot.loc[df_plot['min n cell']==10]
-# 
-# fig, ax = plt.subplots(figsize=(4,4))
-# colors = create_palette(df_plot, 'condition', 'Reds') 
-# sns.barplot(data=df_plot, x='min n cell', y='% pro-metastatic clones', hue='condition', palette=colors, ax=ax)
-# fig.tight_layout()
-# fig.savefig(os.path.join(path_results, '% pro-metastatic clone by mice.png'), dpi=300)
-# 
-# #
-# 
 # # % of cells from prometastatic clones in the PT, aggregated by mice and condition
 # L = []
 # for x in t:
