@@ -29,9 +29,12 @@ df = pd.concat([ctc_original, ctc_line, ref_rebarcoding, lungs_rebarcoding])
 df = df.loc[~df.index.isin(spikeins)]
 df['f'] = df.groupby('sample')['read_count'].transform(lambda x: x / x.sum())
 
+df[df['sample']=="CTC_NT3"]
+df[df['sample']=="re_barc_ref"]
+df['sample'].unique()
+
 
 ##
-
 
 
 df['sample'].unique()
