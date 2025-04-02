@@ -21,11 +21,12 @@ matplotlib.use('macOSX')
 
 # Paths
 path_main = '/Users/ieo7295/Desktop/BC_chemo_reproducibility/'
+path_adata = '/Users/ieo7295/Desktop/tests/cell/data/default'
 path_data = os.path.join(path_main, 'data', 'CTCs')
 path_results = os.path.join(path_main, 'results', 'CTCs', 'general_umaps')
 
 # Read adata and format degs for dotplot
-adata = sc.read(os.path.join(path_data, 'clustered.h5ad'))
+adata = sc.read(os.path.join(path_adata, 'clustered.h5ad'))
 embs = (
     adata.obs
     .rename(columns={'final_cell_states':'cell_state'})
@@ -108,14 +109,49 @@ gs = GridSpec(2, 6, figure=fig, height_ratios=[1,1.5])
 
 ax = fig.add_subplot(gs[0,1:-1])
 pairs = [
-    ['PT, untreated', 'PT, treated'],
-    ['lung, untreated', 'lung, single-treated'],
-    ['lung, untreated', 'lung, double-treated'],
-    ['lung, single-treated', 'lung, double-treated'],
+    ['CTC', 'PT'],
+    ['CTC', 'lung'],
+    ['PT', 'lung'],
 ]
-violin(adata.obs, 'condition', 'cycling', ax=ax, c='darkgrey', with_stats=True, pairs=pairs)
+
+def violin(df, x, y, by=None, c=None, a=1, l=None, ax=None, with_stats=False, order=None, pairs=None):
+    """
+    Base violinplot.
+    """
+    params = {   
+        'boxprops' : {'edgecolor': 'white', 'linewidth': 0.5}, 
+        'medianprops': {"color": "white", "linewidth": 1.2},
+        'whiskerprops':{"color": "black", "linewidth": 1}
+    }
+    
+    if isinstance(c, str):
+        ax = sns.violinplot(data=df, x=x, y=y, color=c, ax=ax, saturation=0.7, order=order, **params) 
+        ax.set(xlabel='', ylabel='')
+        ax.set_xticklabels(np.arange(df[x].unique().size))
+
+    elif isinstance(c, dict) and by is None:
+        ax = sns.violinplot(data=df, x=x, y=y, palette=c.values(), ax=ax, saturation=0.7, order=order, **params)
+        ax.set(xlabel='', ylabel='') 
+        ax.set_xticklabels(np.arange(df[x].unique().size))
+            
+    elif isinstance(c, dict) and by is not None:
+        ax = sns.violinplot(data=df, x=x, y=y, palette=c.values(), hue=by, 
+            ax=ax, saturation=0.7, **params)
+        ax.legend([], [], frameon=False)
+        ax.set(xlabel='', ylabel='')
+        ax.set_xticklabels(np.arange(df[x].unique().size))
+
+    else:
+        raise ValueError(f'{by} categories do not match provided colors keys')
+
+    if with_stats:
+        add_wilcox(df, x, y, pairs, ax, order=None)
+
+    return ax
+
+violin(adata.obs, 'origin', 'cycling', ax=ax, c='darkgrey', with_stats=True, pairs=pairs)
 format_ax(ax, title='Cell cycle signatures scores', 
-          xticks=adata.obs['condition'].cat.categories, ylabel='Score')
+          xticks=adata.obs['origin'].cat.categories, ylabel='Score')
 ax.spines[['left', 'right', 'top']].set_visible(False)
 
 ax = fig.add_subplot(gs[1,:2])
