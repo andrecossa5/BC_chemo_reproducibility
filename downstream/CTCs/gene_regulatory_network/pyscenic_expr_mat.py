@@ -25,12 +25,11 @@ path_tfs=os.path.join(path_main,"data", "CTCs", "grn", "resources", "allTFs_hg38
 
 
 #output path
-f_loom_path_scenic= os.path.join(path_main,"data", "CTCs", "grn", "resources", "ctc_scenic.loom")
+f_loom_path_scenic= os.path.join(path_main,"data", "CTCs", "grn", "resources", "PAEP_scenic.loom")
 
 #Data
 adata= sc.read(os.path.join(path_data, "clustered.h5ad" ))
 tfs= [tf.strip() for tf in open(path_tfs)]
-
 
 # as a general QC. We inspect that our object has transcription factors listed in our main annotations.
 print(
@@ -51,8 +50,6 @@ col_attrs = {
 }
 lp.create( f_loom_path_scenic, adata.X.transpose(), row_attrs, col_attrs)
 
-loom_file= os.path.join(path_data, 'grn', 'resources', 'ctc_scenic_raw.loom')
-ds= lp.connect(loom_file,mode='r')
 
 
 
