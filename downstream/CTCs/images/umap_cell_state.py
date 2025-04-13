@@ -73,3 +73,105 @@ fig.subplots_adjust(left=.05, right=.9, top=.9, bottom=.2, wspace=1.3)
 plt.show()
 # Save
 fig.savefig(os.path.join(path_results, 'annotated_cell_states.png'), dpi=500)
+
+
+#PAGA
+adata = sanitize_neighbors(adata)
+sc.tl.paga(adata, groups='final_cell_state', neighbors_key='nn')
+
+# Network
+fig, ax = plt.subplots(figsize=(7,7))
+sc.pl.paga(adata, frameon=False, ax=ax)
+sc.pl.paga(adata, frameon=False, ax=ax)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, 'paga.png'), dpi=1000)
+
+# Heatmap
+cats = adata.obs['final_cell_state'].cat.categories
+df_ = pd.DataFrame(adata.uns['paga']['connectivities'].A, index=cats, columns=cats)
+g = plot_clustermap(df_, figsize=(7,5), cb_label='Connectivities', title='PAGA cell states')
+g.fig.savefig(os.path.join(path_results, 'paga_heat.png'), dpi=300)
+
+
+
+# CC
+
+fig = plt.figure(figsize=(14,6.8))
+
+gs = GridSpec(2, 6, figure=fig, height_ratios=[1,1.5])
+
+ax = fig.add_subplot(gs[0,1:-1])
+pairs = [
+    ['PT', 'lung'],
+    ['CTC', 'lung'],
+    ['CTC', 'PT'],
+]
+
+
+def violin(df, x, y, by=None, c=None, a=1, l=None, ax=None, with_stats=False, order=None, pairs=None):
+    """
+    Base violinplot, updated for seaborn >= 0.12 and matplotlib >= 3.8.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 4))
+
+    plot_kwargs = {
+        'data': df,
+        'x': x,
+        'y': y,
+        'ax': ax,
+        'saturation': a,
+        'order': order,
+        'linewidth': 1
+    }
+
+    # Handle color/palette logic
+    if isinstance(c, str):
+        plot_kwargs['color'] = c
+    elif isinstance(c, dict):
+        plot_kwargs['palette'] = [c[k] for k in df[x].unique() if k in c]
+
+    # Plot
+    if by is None:
+        sns.violinplot(**plot_kwargs)
+    else:
+        plot_kwargs['hue'] = by
+        sns.violinplot(**plot_kwargs)
+        ax.legend([], [], frameon=False)
+
+    ax.set(xlabel='', ylabel='')
+
+    # Optional stats annotation
+    if with_stats and pairs:
+        try:
+            add_wilcox(df, x, y, pairs, ax, order=order)
+        except Exception as e:
+            print(f"[Warning] Failed to add statistical annotations: {e}")
+
+    return ax
+
+
+
+
+
+
+
+
+
+violin(adata.obs, 'origin', 'cycling', ax=ax, c='darkgrey', with_stats=True, pairs=pairs)
+format_ax(ax, title='Cell cycle signatures scores', 
+          xticks=adata.obs['origin'].cat.categories, ylabel='Score')
+ax.spines[['left', 'right', 'top']].set_visible(False)
+
+ax = fig.add_subplot(gs[1,:2])
+draw_embeddings(embs, cont='s_seurat', ax=ax, title='cycling', cbar_kwargs={'palette':'mako'}, s=1)
+ax.axis('off')
+ax = fig.add_subplot(gs[1,2:4])
+draw_embeddings(embs, cont='G1/S', ax=ax, title='G1/S', cbar_kwargs={'palette':'mako'}, s=1)
+ax.axis('off')
+ax = fig.add_subplot(gs[1,4:])
+draw_embeddings(embs, cont='G2/M', ax=ax, title='G2/M', cbar_kwargs={'palette':'mako'}, s=1)
+ax.axis('off')
+
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, 'cc.png'), dpi=400)
