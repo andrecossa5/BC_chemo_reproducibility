@@ -53,17 +53,15 @@ metadata = json.loads(decompressed_data)
 
 
 
-
-
 #create new Anndata
 common_cells = auc_mtx.index.intersection(adata.obs_names)
 obs_subset = adata.obs.loc[common_cells].copy()
 auc_mtx = auc_mtx.loc[common_cells]
 
 adata_auc = ad.AnnData(X=auc_mtx.values, obs=obs_subset, var=pd.DataFrame(index=auc_mtx.columns))
+auc_mtx.columns = auc_mtx.columns.str.replace('(+)', '', regex=False)
 adata_auc.var['regulon'] = auc_mtx.columns
-adata_auc.var['regulon'] = adata_auc.var['regulon'].str.replace('(+)', '', regex=False)
-adata_auc.var_names = adata_auc.var_names.str.replace('(+)', '',regex=False)
+adata_auc.var_names = adata_auc.var['regulon']
 
 def calculate_percent_cells_for_regulons(adata_auc):
     """
@@ -100,7 +98,6 @@ adata_auc.var['mean'] = mean_values
 adata_auc.var['var'] = variance_values
 
 X = adata_auc.X
-
 # Check if the matrix is dense (numpy ndarray), and if so, convert it to sparse CSR matrix
 if isinstance(X, np.ndarray):
     print("Converting dense matrix to sparse CSR format...")
@@ -120,7 +117,7 @@ D = Dist_features(adata_auc, contrasts, jobs=jobs, app=False)
 D.run_all_jobs()
 
 dfs = []
-categories= ['nonpro_AC_vs_NT', 'promet_AC_vs_NT', 'promet_AC', 'dom_promet_vs_nonmet', 'promet_NT']
+categories= ['nonpro_AC_vs_NT', 'promet_AC_vs_NT', 'promet_AC', 'pro_nonpro_AC', 'promet_NT']
 
 for cat in categories:
     key = f"{cat}|genes|wilcoxon"
@@ -132,15 +129,14 @@ all_degs= pd.concat(dfs)
 all_degs.to_csv(os.path.join(path_data, "Degs_regulon.csv"))
 
 
-
 #Embeddings regulons
 
-# UMAP
-# runUmap = umap.UMAP(n_neighbors=15, min_dist=0.4, metric='correlation').fit_transform
-# dr_umap = runUmap( auc_mtx )
-# pd.DataFrame(dr_umap, columns=['X', 'Y'], index=auc_mtx.index).to_csv(os.path.join(path_results, "scenic_umap.txt"), sep='\t')
+# UMAP #15 0,4
+runUmap = umap.UMAP(n_neighbors=30, min_dist=0.4, metric='euclidean').fit_transform
+dr_umap = runUmap( auc_mtx )
+pd.DataFrame(dr_umap, columns=['X', 'Y'], index=auc_mtx.index).to_csv(os.path.join(path_results, "scenic_umap_30.txt"), sep='\t')
 
-dr_umap = pd.read_csv(os.path.join(path_results,'scenic_umap.txt'), sep='\t', header=0, index_col=0 )
+dr_umap = pd.read_csv(os.path.join(path_results,'scenic_umap_30.txt'), sep='\t', header=0, index_col=0 )
 
 #Viz 
 umap_array = dr_umap[['X', 'Y']].values
@@ -153,7 +149,11 @@ embs = (
         adata_auc.obsm['X_umap'], columns=['UMAP1', 'UMAP2'], index=adata_auc.obs_names
     ))
 )
+  
 df_markers = pd.read_csv(os.path.join(path_data, 'Degs_regulon.csv'), index_col=0)
+
+
+
 # Create colors
 cell_state_colors = create_palette(embs, 'condition', 'tab20')
 cell_state_colors['Undefined'] = '#E8E7E7'
@@ -166,18 +166,19 @@ cell_state_colors['Undefined'] = '#E8E7E7'
 Prep df for dotplot.
 """
 
+
 genes = {}
 comparisons = df_markers['comparison'].unique()
 n=3
 for comparison in comparisons:
-    group = '_'.join(comparison.split('_')[:4])
+    group = '_vs_'.join(comparison.split('_vs_')[:2])                         
     print(group)
     genes[group] = (
         df_markers.query('comparison == @comparison and perc_FC>1 and AUROC>0.8')
         .index[:n]
         .to_list()
     )
-
+    print(genes)
 from itertools import chain
 genes_ = list(chain.from_iterable([ genes[x] for x in genes ]))
 
@@ -200,11 +201,7 @@ df['log2FC'][df['log2FC'] >= np.percentile(df['log2FC'], 95)] = np.percentile(df
 
 
 
-
-
-
-
-fig = plt.figure(figsize=(20,8))
+fig = plt.figure(figsize=(20,10))
 gs = GridSpec(1, 2, figure=fig, width_ratios=[2,2.5])
 
 ax = fig.add_subplot(gs[0])
@@ -218,19 +215,18 @@ draw_embeddings(
 
 ax = fig.add_subplot(gs[1])
 df_ = prep_df_for_dotplot(df_markers)
-df['comparison'] = df['comparison'].map(lambda x: x.join('_')[3][:-1]) 
+df['comparison'] = df['comparison'].map(lambda x: x.join('_')[0][:-1]) 
 
 sns.scatterplot(
-    data=df_, y='comparison', x='gene', size='group_perc', hue='log2FC', 
+    data=df, y='comparison', x='regulon', size='group_perc', hue='log2FC', 
     palette='mako', ax=ax, sizes=(1, 100)
 )
 format_ax(ax, title='Markers', xlabel='Top 3 marker regulons', ylabel='condition', rotx=90)
 ax.legend(loc='center left', bbox_to_anchor=(1,.5), frameon=False)
 
 fig.subplots_adjust(left=.05, right=.9, top=.9, bottom=.2, wspace=1.3)
-plt.show()
 # Save
-fig.savefig(os.path.join(path_results, 'annotated_cell_states.png'), dpi=500)
+fig.savefig(os.path.join(path_results, 'regulon_condition_30.png'), dpi=500)
 
 
 
@@ -252,27 +248,189 @@ regulons= regulons.drop(index=[1]).reset_index(drop=True)
 alt_mtx = pd.DataFrame(lf.ra.Regulons, index=lf.ra.Gene)
 
 
-#Create dict
-d_reg={}
-for tf in alt_mtx.columns:
-    genes_for_set = alt_mtx.index[alt_mtx[tf] == 1].tolist()
-    d_reg[tf] = genes_for_set
+#Create dictionary 
+d_reg = {}
+
+if isinstance(metadata.get('regulonThresholds', None), list):
+    for item in metadata['regulonThresholds']:
+        
+        tf = item.get('regulon')
+        if tf is None:
+            print("Missing 'regulon' key in item:", item)
+            continue
+
+        if tf not in alt_mtx.columns:
+            print(f"Warning: {tf} column is not found in alt_mtx.")
+            continue
+
+        motif_data = item.get('motifData', {})
+        print(f"Motif Data: {motif_data}")
+
+        genes_for_set = alt_mtx.index[alt_mtx[tf] == 1].tolist()
+        print(f"Genes for {tf}: {genes_for_set}")
+
+        d_reg[tf] = {
+            'gene_set': genes_for_set,
+            'motif_data': motif_data
+        }
+
+#save d_reg
+rows = []
+for tf, data in d_reg.items():
+    gene_set = data['gene_set']
+    motif_data = data['motif_data']
+    
+    rows.append({
+        'regulon': tf,
+        'gene_set': ', '.join(gene_set),  
+        'motif_data': str(motif_data)    
+    })
+
+df = pd.DataFrame(rows)
+df.to_csv(os.path.join(path_results,'regulon_data.csv'), index=False)
 
 
-reg_paep={}
+#Contrasts tested regulons
+d_contrast={}
+reg_to_extract= ['THRB(+)','SMAD5(+)','NR2F1(+)']
+for key,value in d_reg.items():
+    if key in  reg_to_extract:
+        d_contrast[key] = value
+
 #N regulons with PAEP
-for key, value in d_reg.items():
-    for val in value: 
-        if val == 'PAEP':
-            reg_paep[key]= value
+reg_paep = {}
+for tf, value in d_reg.items():
+    gene_set = value.get('gene_set', [])
+    if 'PAEP' in gene_set:
+        reg_paep[tf] = {
+            'gene_set': gene_set,
+            'motif_data': value.get('motif_data', {})
+        }
+
+
+#Viz 
+df_violin= df_markers[
+    df_markers['comparison'].isin([
+        'pro_nonpro_AC0_vs_pro_nonpro_AC1',
+        'pro_nonpro_AC1_vs_pro_nonpro_AC0',
+        'promet_AC0_vs_promet_AC1',
+        'promet_AC1_vs_promet_AC0'
+        ])
+]
 
 
 #
-df_motif
-rank_df_10
-rank_df_500
-regulons
+adata_auc_thrb = adata_auc.copy()
+thrb_val= auc_mtx['THRB']
+adata_auc_thrb.obs['THRB'] = thrb_val
+
+from scipy.stats import mannwhitneyu
+from statsmodels.stats.multitest import multipletests
+
+fig = plt.figure(figsize=(14, 6.8))
+gs = GridSpec(2, 6, figure=fig, height_ratios=[1, 1.5])
+ax = fig.add_subplot(gs[0, 1:-1])
+
+pairs = pairs = [
+    ['PT, untreated', 'PT, treated'],
+    ['lung, untreated', 'lung, single-treated'],
+    ['lung, untreated', 'lung, double-treated'],
+    ['lung, single-treated', 'lung, double-treated'],
+]
+
+p_values = []
+test_stats = []
+for group1, group2 in pairs:
+    data1 = adata_auc_thrb.obs.loc[adata_auc_thrb.obs['condition'] == group1, 'THRB']
+    print(data1)
+    data2 = adata_auc_thrb.obs.loc[adata_auc_thrb.obs['condition'] == group2, 'THRB']
+    
+    stat, p = mannwhitneyu(data1, data2, alternative='two-sided')
+    p_values.append(p)
+    test_stats.append(stat)
+
+reject, pvals_corrected, _, _ = multipletests(p_values, method='fdr_bh')
+
+results_df = pd.DataFrame({
+    'Pair': pairs,
+    'Test Statistic': test_stats,
+    'Raw p-value': p_values,
+    'Adjusted p-value': pvals_corrected,
+    'Reject Null': reject
+})
+
+print(results_df)
+
+
+violin(adata_auc_thrb.obs, 'condition', 'THRB', ax=ax, c='darkgrey', with_stats=True, pairs=pairs)
+format_ax(ax, title='THRB scores', 
+          xticks=adata_auc_thrb.obs['condition'].cat.categories, ylabel='Score')
+ax.spines[['left', 'right', 'top']].set_visible(False)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, "violin_THRB.png"), dpi=400)
+
+
+
+adata_auc_thrb = adata_auc.copy()
+adata_auc.obsm['X_umap']= adata.obsm['X_umap']
+thrb_val= auc_mtx['THRB']
+adata_auc_thrb.obs['THRB'] = thrb_val
+adata_auc_thrb.var
+sc.pl.umap(adata_auc, color='THRB', cmap='viridis', title='THRB expression')
+
+sc.pl.umap(adata, color='condition', cmap='viridis', title='Condition')
 
 
 
 
+
+
+
+
+
+
+
+pairs = [
+    ['PT, untreated', 'PT, treated'],
+    ['lung, untreated', 'lung, single-treated'],
+    ['lung, untreated', 'lung, double-treated'],
+    ['lung, single-treated', 'lung, double-treated'],
+]
+
+# Create the violin plot
+fig, ax = plt.subplots(figsize=(8, 6))
+
+# Create the violin plot for 'THRB' expression across conditions
+sc.pl.violin(adata_auc_thrb, 
+             keys='THRB', 
+             groupby='condition', 
+             ax=ax, 
+             color='darkgrey', 
+             show=False, 
+             with_stats=True)
+
+# Mann-Whitney U tests for each pair
+p_values = []
+for group1, group2 in pairs:
+    # Extract the THRB expression values for the two groups
+    data1 = adata_auc_thrb.obs.loc[adata_auc_thrb.obs['condition'] == group1, 'THRB']
+    data2 = adata_auc_thrb.obs.loc[adata_auc_thrb.obs['condition'] == group2, 'THRB']
+    
+    # Perform the Mann-Whitney U test
+    stat, p_value = mannwhitneyu(data1, data2, alternative='two-sided')
+    p_values.append(p_value)
+    
+    # Annotate the plot with the p-value for each pair
+    # Calculate y position for placing text above the violins
+    y_max = max(np.nanmax(data1), np.nanmax(data2))
+    y_position = y_max + (y_max * 0.05)  # Slightly above the highest value
+    
+    ax.annotate(f'P = {p_value:.3e}', 
+                xy=((pairs.index([group1, group2]) + 0.5) * 1, y_position), 
+                ha='center', 
+                fontsize=12, 
+                color='black')
+
+# Show the violin plot
+plt.tight_layout()
+plt.show()
