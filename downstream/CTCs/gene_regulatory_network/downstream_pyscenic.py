@@ -309,128 +309,246 @@ for tf, value in d_reg.items():
 
 
 #Viz 
-df_violin= df_markers[
-    df_markers['comparison'].isin([
-        'pro_nonpro_AC0_vs_pro_nonpro_AC1',
-        'pro_nonpro_AC1_vs_pro_nonpro_AC0',
-        'promet_AC0_vs_promet_AC1',
-        'promet_AC1_vs_promet_AC0'
-        ])
-]
+jobs,contrasts= prep_jobs_contrasts(adata_auc, path_data, contrasts_name='paep_contrasts')
 
+dist = Dist_features(adata_auc, contrasts=contrasts, jobs=jobs)
+dist.select_genes()  
 
-#
+#create column comparison
+contrasts
+contrast= dist.contrasts['pro_nonpro_AC']
+
+adata_auc.obs['pro_nonpro_AC'] = contrast.category
+
+cols_to_merge = ['nonpro_AC_vs_NT', 'promet_AC_vs_NT', 'promet_AC', 'promet_NT']
+
+# Apply row-wise logic to keep the non-'to_exclude' value
+adata_auc.obs['comparison'] = adata_auc.obs[cols_to_merge].apply(
+    lambda row: next((val for val in row if val != 'to_exclude'), pd.NA),
+    axis=1
+)
+
+print(adata_auc.obs[adata_auc.obs['comparison'].isna()])
+adata_auc.obs['comparison'].unique()
+
 adata_auc_thrb = adata_auc.copy()
 thrb_val= auc_mtx['THRB']
 adata_auc_thrb.obs['THRB'] = thrb_val
 
-from scipy.stats import mannwhitneyu
-from statsmodels.stats.multitest import multipletests
+adata_auc_thrb.write(os.path.join(path_data, "clustered_thrb.h5ad"))
 
-fig = plt.figure(figsize=(14, 6.8))
-gs = GridSpec(2, 6, figure=fig, height_ratios=[1, 1.5])
-ax = fig.add_subplot(gs[0, 1:-1])
 
-pairs = pairs = [
-    ['PT, untreated', 'PT, treated'],
-    ['lung, untreated', 'lung, single-treated'],
-    ['lung, untreated', 'lung, double-treated'],
-    ['lung, single-treated', 'lung, double-treated'],
-]
+adata_auc_thrb= sc.read(os.path.join(path_data,"clustered_thrb.h5ad"))
 
-p_values = []
-test_stats = []
-for group1, group2 in pairs:
-    data1 = adata_auc_thrb.obs.loc[adata_auc_thrb.obs['condition'] == group1, 'THRB']
-    print(data1)
-    data2 = adata_auc_thrb.obs.loc[adata_auc_thrb.obs['condition'] == group2, 'THRB']
+
+
+#functions
+def violin(
+    df: pd.DataFrame, 
+    x: str, 
+    y: str, 
+    by: str = None, 
+    color: str = None,
+    categorical_cmap: str|Dict[str,Any] = 'tab10', 
+    x_order: Iterable[str] = None,
+    add_stats: bool = False,
+    pairs: Iterable[Iterable[str]] = None, 
+    by_order: Iterable[str] = None,
+    linewidth: float|str = .5, 
+    ax: matplotlib.axes.Axes = None, 
+    kwargs: Dict[str,Any] = {}
+    ) -> matplotlib.axes.Axes:
+
+    params = {   
+        'inner' : 'quart'
+    }    
+    params = update_params(params, kwargs)
+
+    # Handle colors and by
+    if by is None:
+        sns.violinplot(
+            data=df, x=x, y=y, ax=ax, 
+            order=x_order, 
+            color=color,
+            linewidth=linewidth, 
+            **params
+        )
+        
+    elif by is not None and by in df.columns:
+        # Categorical
+        if pd.api.types.is_string_dtype(df[by]) or df[by].dtype == 'category':
+            
+            if isinstance(categorical_cmap, str):
+                _cmap = create_palette(df, by, palette=categorical_cmap)
+            else:
+                _cmap = categorical_cmap
+
+            assert all([ x in _cmap for x in df[by].unique() ])
+            sns.violinplot(
+                data=df, x=x, y=y, ax=ax, 
+                order=x_order, 
+                dodge=True,
+                hue=by, hue_order=by_order, palette=_cmap,
+                linewidth=linewidth, 
+                **params
+            )
+            ax.get_legend().remove()
+
+        else:
+            raise ValueError(f'{by} must be categorical or string!')
     
-    stat, p = mannwhitneyu(data1, data2, alternative='two-sided')
-    p_values.append(p)
-    test_stats.append(stat)
+    else:
+        raise KeyError(f'{by} not in df.columns!')
 
-reject, pvals_corrected, _, _ = multipletests(p_values, method='fdr_bh')
+    if add_stats:
+        add_wilcox(df, x, y, pairs, ax, order=x_order)
 
-results_df = pd.DataFrame({
-    'Pair': pairs,
-    'Test Statistic': test_stats,
-    'Raw p-value': p_values,
-    'Adjusted p-value': pvals_corrected,
-    'Reject Null': reject
-})
+    return ax
 
-print(results_df)
-
-
-violin(adata_auc_thrb.obs, 'condition', 'THRB', ax=ax, c='darkgrey', with_stats=True, pairs=pairs)
-format_ax(ax, title='THRB scores', 
-          xticks=adata_auc_thrb.obs['condition'].cat.categories, ylabel='Score')
-ax.spines[['left', 'right', 'top']].set_visible(False)
-fig.tight_layout()
-fig.savefig(os.path.join(path_results, "violin_THRB.png"), dpi=400)
-
-
-
-adata_auc_thrb = adata_auc.copy()
-adata_auc.obsm['X_umap']= adata.obsm['X_umap']
-thrb_val= auc_mtx['THRB']
-adata_auc_thrb.obs['THRB'] = thrb_val
-adata_auc_thrb.var
-sc.pl.umap(adata_auc, color='THRB', cmap='viridis', title='THRB expression')
-
-sc.pl.umap(adata, color='condition', cmap='viridis', title='Condition')
+def add_wilcox(
+    df: pd.DataFrame, 
+    x: str, 
+    y: str, 
+    pairs: Iterable[Iterable[str]], 
+    ax:  matplotlib.axes.Axes = None, 
+    order: Iterable[str] = None
+    ):
+    """
+    Add statistical annotations (basic tests from statannotations).
+    """
+    annotator = Annotator(ax, pairs, data=df, x=x, y=y, order=order)
+    annotator.configure(
+        test='Mann-Whitney', text_format='star', show_test_name=False,
+        line_height=0.001, text_offset=3
+    )
+    annotator.apply_and_annotate()
 
 
+def format_ax(
+    ax: matplotlib.axes.Axes = None, 
+    title: str = None, 
+    xlabel: str = None, 
+    ylabel: str = None, 
+    xticks: Iterable[Any] = None, 
+    yticks: Iterable[Any] = None, 
+    rotx: float = 0, 
+    roty: float = 0, 
+    axis: bool = True,
+    xlabel_size: float = None, 
+    ylabel_size: float = None,
+    xticks_size: float = None, 
+    yticks_size: float = None,
+    title_size: float = None, 
+    log: bool = False, 
+    reduced_spines: bool = False
+    ) -> matplotlib.axes.Axes:
+    """
+    Format labels, ticks and stuff of an ax: matplotlib.axes.Axes object.
+    """
+
+    if log:
+        ax.set_yscale('log')
+    
+    if title is not None:
+        ax.set(title=title)
+    
+    if xlabel is not None:
+        ax.set(xlabel=xlabel)
+    
+    if xlabel is not None:
+        ax.set(ylabel=ylabel)
+
+    if xticks is not None:
+        ax.set_xticks([ i for i in range(len(xticks)) ])
+        ax.set_xticklabels(xticks)
+    if yticks is not None:
+        ax.set_yticks([ i for i in range(len(yticks)) ])
+        ax.set_yticklabels(yticks)
+
+    if xticks_size is not None:
+        ax.xaxis.set_tick_params(labelsize=xticks_size)
+    if yticks_size is not None:
+        ax.yaxis.set_tick_params(labelsize=yticks_size)
+
+    if xlabel_size is not None:
+        ax.xaxis.label.set_size(xlabel_size)
+    if ylabel_size is not None:
+        ax.yaxis.label.set_size(ylabel_size)
+
+    ax.tick_params(axis='x', labelrotation = rotx)
+    ax.tick_params(axis='y', labelrotation = roty)
+
+    if title_size is not None:
+        ax.set_title(title, fontdict={'fontsize': title_size})
+    
+    if reduced_spines:
+        ax.spines[['right', 'top']].set_visible(False)
+    
+    if not axis:
+        ax.axis('off')
+
+    return ax
+
+adata_auc_thrb_clean = adata_auc_thrb[adata_auc_thrb.obs['comparison'].notna()].copy()
 
 
-
-
-
-
-
-
+#Here we go
+fig = plt.figure(figsize=(10, 6))
+ax = fig.add_subplot(111)
 
 pairs = [
-    ['PT, untreated', 'PT, treated'],
-    ['lung, untreated', 'lung, single-treated'],
-    ['lung, untreated', 'lung, double-treated'],
-    ['lung, single-treated', 'lung, double-treated'],
+    ['promet_NT', 'nonpro_NT'],
+    ['promet_AC', 'nonpro_AC'],
+    ['promet_AC', 'promet_NT'],
+    ['nonpro_AC', 'nonpro_NT'],
+    ['nonpro_AC','promet_NT']
 ]
 
-# Create the violin plot
-fig, ax = plt.subplots(figsize=(8, 6))
+violin(
+    df=adata_auc_thrb_clean.obs,
+    x='comparison',
+    y='THRB',
+    ax=ax,
+    add_stats=True,
+    pairs=pairs,
+    linewidth=0.5
+)
 
-# Create the violin plot for 'THRB' expression across conditions
-sc.pl.violin(adata_auc_thrb, 
-             keys='THRB', 
-             groupby='condition', 
-             ax=ax, 
-             color='darkgrey', 
-             show=False, 
-             with_stats=True)
+# Format the axis
+format_ax(ax, title='THRB scores', 
+          xticks=adata_auc_thrb_clean.obs['comparison'].cat.categories, ylabel='Score', reduced_spines=True)
+#ax.spines[['left', 'right', 'top']].set_visible(False)
+fig.tight_layout()
 
-# Mann-Whitney U tests for each pair
-p_values = []
-for group1, group2 in pairs:
-    # Extract the THRB expression values for the two groups
-    data1 = adata_auc_thrb.obs.loc[adata_auc_thrb.obs['condition'] == group1, 'THRB']
-    data2 = adata_auc_thrb.obs.loc[adata_auc_thrb.obs['condition'] == group2, 'THRB']
-    
-    # Perform the Mann-Whitney U test
-    stat, p_value = mannwhitneyu(data1, data2, alternative='two-sided')
-    p_values.append(p_value)
-    
-    # Annotate the plot with the p-value for each pair
-    # Calculate y position for placing text above the violins
-    y_max = max(np.nanmax(data1), np.nanmax(data2))
-    y_position = y_max + (y_max * 0.05)  # Slightly above the highest value
-    
-    ax.annotate(f'P = {p_value:.3e}', 
-                xy=((pairs.index([group1, group2]) + 0.5) * 1, y_position), 
-                ha='center', 
-                fontsize=12, 
-                color='black')
+fig.savefig(os.path.join(path_results, 'THRB_violin.png'), dpi=400)
 
-# Show the violin plot
-plt.tight_layout()
+
+
+
+sns.boxplot(x='comparison', y='THRB', data=adata_auc_thrb_clean.obs)
 plt.show()
+sns.violinplot(x='comparison', y='THRB', data=adata_auc_thrb_clean.obs)
+plt.show()
+
+adata_auc_thrb.var.drop('THRB', inplace=True)
+
+#umap
+adata_tmp=adata.copy()
+adata_tmp.obs['TF_THRB']=adata_auc_thrb.obs['THRB']
+adata_tmp.obs['comparison']= adata_auc_thrb.obs['comparison']
+regulon_to_plot=['TF_THRB']
+
+#save
+plt.figure(figsize=(8, 6))  
+sc.pl.umap(adata_tmp, color='comparison', cmap='viridis', vmin=0, show=False)
+plt.savefig("umap_comparison.png", dpi=300, bbox_inches='tight')  
+plt.close()
+
+plt.figure(figsize=(8, 6))  
+sc.pl.umap(adata_tmp, color=regulon_to_plot, cmap='viridis', vmin=0, show=False)
+plt.savefig("umap_THRB.png", dpi=300, bbox_inches='tight')  
+plt.close()
+
+
+
+
