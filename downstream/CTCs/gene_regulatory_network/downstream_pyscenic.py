@@ -15,14 +15,16 @@ from scipy.sparse import csr_matrix
 from Cellula.dist_features._dist_features import *
 from Cellula.dist_features._Dist import *
 from Cellula.plotting._plotting import *
+from Cellula.dist_features._signatures import scanpy_score, wot_zscore
 from matplotlib.gridspec import GridSpec
-from plotting_utils._plotting_base import *
+import plotting_utils as plu
 from Cellula.plotting._plotting import *
 from Cellula._utils import sanitize_neighbors
 from BC_chemo_utils.utils import prep_df_for_dotplot
 from BC_chemo_utils.tests import *
 from BC_chemo_utils.plotting import *
 matplotlib.use('macOSX')
+
 
 
 #Paths
@@ -54,57 +56,90 @@ metadata = json.loads(decompressed_data)
 
 
 #create new Anndata
-common_cells = auc_mtx.index.intersection(adata.obs_names)
-obs_subset = adata.obs.loc[common_cells].copy()
-auc_mtx = auc_mtx.loc[common_cells]
+# common_cells = auc_mtx.index.intersection(adata.obs_names)
+# obs_subset = adata.obs.loc[common_cells].copy()
+# auc_mtx = auc_mtx.loc[common_cells]
 
-adata_auc = ad.AnnData(X=auc_mtx.values, obs=obs_subset, var=pd.DataFrame(index=auc_mtx.columns))
-auc_mtx.columns = auc_mtx.columns.str.replace('(+)', '', regex=False)
-adata_auc.var['regulon'] = auc_mtx.columns
-adata_auc.var_names = adata_auc.var['regulon']
+# adata_auc = ad.AnnData(X=auc_mtx.values, obs=obs_subset, var=pd.DataFrame(index=auc_mtx.columns))
+# auc_mtx.columns = auc_mtx.columns.str.replace('(+)', '', regex=False)
+# adata_auc.var['regulon'] = auc_mtx.columns
+# adata_auc.var_names = adata_auc.var['regulon']
 
-def calculate_percent_cells_for_regulons(adata_auc):
-    """
-    Calculate the percentage of cells expressing each regulon.
-    Assumes that regulons are in `adata.var` and the expression data is in `adata.X`.
-    """
-    regulon_expr_matrix = adata_auc.X > 0  
-    percent_cells = np.sum(regulon_expr_matrix, axis=0) / regulon_expr_matrix.shape[0] * 100
+# def calculate_percent_cells_for_regulons(adata_auc):
+#     """
+#     Calculate the percentage of cells expressing each regulon.
+#     Assumes that regulons are in `adata.var` and the expression data is in `adata.X`.
+#     """
+#     regulon_expr_matrix = adata_auc.X > 0  
+#     percent_cells = np.sum(regulon_expr_matrix, axis=0) / regulon_expr_matrix.shape[0] * 100
 
-    adata_auc.var['percent_cells'] = percent_cells
+#     adata_auc.var['percent_cells'] = percent_cells
 
-calculate_percent_cells_for_regulons(adata_auc)
+# calculate_percent_cells_for_regulons(adata_auc)
 
-#add highly_variable_features
-highly_variable_features = adata.var['highly_variable_features']
-regulon_to_gene_mapping = {}  
-for regulon_name in adata_auc.var.index:
-    gene_name = regulon_name  
-    regulon_to_gene_mapping[regulon_name] = gene_name
+# #add highly_variable_features
+# highly_variable_features = adata.var['highly_variable_features']
+# regulon_to_gene_mapping = {}  
+# for regulon_name in adata_auc.var.index:
+#     gene_name = regulon_name  
+#     regulon_to_gene_mapping[regulon_name] = gene_name
 
-adata_auc.var['highly_variable_features'] = [
-    highly_variable_features.get(regulon_to_gene_mapping[regulon], False)  
-    for regulon in adata_auc.var.index
-]
+# adata_auc.var['highly_variable_features'] = [
+#     highly_variable_features.get(regulon_to_gene_mapping[regulon], False)  
+#     for regulon in adata_auc.var.index
+# ]
 
-# add layer RAW 
-adata_auc.layers['raw'] = adata_auc.X
+# # add layer RAW 
+# adata_auc.layers['raw'] = adata_auc.X
 
-#add 'mean' and 'var' columns
-mean_values = np.array(adata_auc.X.mean(axis=0)).flatten()
-variance_values = np.array(adata_auc.X.var(axis=0))
+# #add 'mean' and 'var' columns
+# mean_values = np.array(adata_auc.X.mean(axis=0)).flatten()
+# variance_values = np.array(adata_auc.X.var(axis=0))
 
-adata_auc.var['mean'] = mean_values
-adata_auc.var['var'] = variance_values
+# adata_auc.var['mean'] = mean_values
+# adata_auc.var['var'] = variance_values
 
-X = adata_auc.X
-# Check if the matrix is dense (numpy ndarray), and if so, convert it to sparse CSR matrix
-if isinstance(X, np.ndarray):
-    print("Converting dense matrix to sparse CSR format...")
-    adata_auc.X = csr_matrix(X)
+# X = adata_auc.X
+# # Check if the matrix is dense (numpy ndarray), and if so, convert it to sparse CSR matrix
+# if isinstance(X, np.ndarray):
+#     print("Converting dense matrix to sparse CSR format...")
+#     adata_auc.X = csr_matrix(X)
 
-if adata_auc.X.dtype != 'float32':
-    adata_auc.X = adata_auc.X.astype('float32')
+# if adata_auc.X.dtype != 'float32':
+#     adata_auc.X = adata_auc.X.astype('float32')
+
+
+#stats ptx
+
+auc_mtx
+gene_counts = [len(d_reg[key]['gene_set']) for key in d_reg]
+mean_gene_count = sum(gene_counts) / len(gene_counts)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ## DE ##
@@ -113,8 +148,14 @@ if adata_auc.X.dtype != 'float32':
 jobs, contrasts = prep_jobs_contrasts(adata_auc, path_data, contrasts_name='paep_contrasts')
 
 # Here we go
-D = Dist_features(adata_auc, contrasts, jobs=jobs, app=False)
-D.run_all_jobs()
+D = Dist_features(adata_auc, contrasts, jobs=jobs)
+D.select_genes()
+for k in D.jobs:
+    for x in D.jobs[k]:
+        if x['model'] == 'wilcoxon':
+            job_key = '|'.join([k, x['features'], x['model']])
+            de_results, gene_set_dict = D.compute_DE(contrast_key=k, which='perc_1_no_miribo')
+            D.Results.add_job_results(de_results, gene_set_dict, job_key=job_key)
 
 dfs = []
 categories= ['nonpro_AC_vs_NT', 'promet_AC_vs_NT', 'promet_AC', 'pro_nonpro_AC', 'promet_NT']
@@ -127,8 +168,8 @@ for cat in categories:
 
 all_degs= pd.concat(dfs)
 all_degs.to_csv(os.path.join(path_data, "Degs_regulon.csv"))
-
-
+#where THRB is DE 
+degs_promet_AC=D.Results.results['promet_AC|genes|wilcoxon']['df']
 #Embeddings regulons
 
 # UMAP #15 0,4
@@ -151,9 +192,7 @@ embs = (
 )
   
 df_markers = pd.read_csv(os.path.join(path_data, 'Degs_regulon.csv'), index_col=0)
-
-
-
+df_markers['comparison'].unique()
 # Create colors
 cell_state_colors = create_palette(embs, 'condition', 'tab20')
 cell_state_colors['Undefined'] = '#E8E7E7'
@@ -165,8 +204,6 @@ cell_state_colors['Undefined'] = '#E8E7E7'
 """
 Prep df for dotplot.
 """
-
-
 genes = {}
 comparisons = df_markers['comparison'].unique()
 n=3
@@ -309,20 +346,14 @@ for tf, value in d_reg.items():
 
 
 #Viz 
-jobs,contrasts= prep_jobs_contrasts(adata_auc, path_data, contrasts_name='paep_contrasts')
-
-dist = Dist_features(adata_auc, contrasts=contrasts, jobs=jobs)
-dist.select_genes()  
-
 #create column comparison
 contrasts
-contrast= dist.contrasts['pro_nonpro_AC']
+contrast= D.contrasts['promet_AC_vs_NT']
 
-adata_auc.obs['pro_nonpro_AC'] = contrast.category
+adata_auc.obs['promet_AC_vs_NT'] = contrast.category
 
 cols_to_merge = ['nonpro_AC_vs_NT', 'promet_AC_vs_NT', 'promet_AC', 'promet_NT']
 
-# Apply row-wise logic to keep the non-'to_exclude' value
 adata_auc.obs['comparison'] = adata_auc.obs[cols_to_merge].apply(
     lambda row: next((val for val in row if val != 'to_exclude'), pd.NA),
     axis=1
@@ -491,7 +522,7 @@ def format_ax(
 
 adata_auc_thrb_clean = adata_auc_thrb[adata_auc_thrb.obs['comparison'].notna()].copy()
 
-
+adata_auc_thrb_clean.obs['comparison'].unique()
 #Here we go
 fig = plt.figure(figsize=(10, 6))
 ax = fig.add_subplot(111)
@@ -517,18 +548,10 @@ violin(
 # Format the axis
 format_ax(ax, title='THRB scores', 
           xticks=adata_auc_thrb_clean.obs['comparison'].cat.categories, ylabel='Score', reduced_spines=True)
-#ax.spines[['left', 'right', 'top']].set_visible(False)
 fig.tight_layout()
-
+plt.show()
 fig.savefig(os.path.join(path_results, 'THRB_violin.png'), dpi=400)
 
-
-
-
-sns.boxplot(x='comparison', y='THRB', data=adata_auc_thrb_clean.obs)
-plt.show()
-sns.violinplot(x='comparison', y='THRB', data=adata_auc_thrb_clean.obs)
-plt.show()
 
 adata_auc_thrb.var.drop('THRB', inplace=True)
 
@@ -538,7 +561,7 @@ adata_tmp.obs['TF_THRB']=adata_auc_thrb.obs['THRB']
 adata_tmp.obs['comparison']= adata_auc_thrb.obs['comparison']
 regulon_to_plot=['TF_THRB']
 
-#save
+#save umap
 plt.figure(figsize=(8, 6))  
 sc.pl.umap(adata_tmp, color='comparison', cmap='viridis', vmin=0, show=False)
 plt.savefig("umap_comparison.png", dpi=300, bbox_inches='tight')  
@@ -548,6 +571,177 @@ plt.figure(figsize=(8, 6))
 sc.pl.umap(adata_tmp, color=regulon_to_plot, cmap='viridis', vmin=0, show=False)
 plt.savefig("umap_THRB.png", dpi=300, bbox_inches='tight')  
 plt.close()
+
+
+
+#adata_tmp=adata_auc_thrb_clean.copy()
+# adata_tmp= adata_auc_thrb_clean[adata_auc_thrb_clean.obs['THRB'] != 0]
+# adata_tmp.obs
+pairs=[
+    ['promet_NT', 'nonpro_NT'],
+    ['promet_AC', 'nonpro_AC'],
+    ['promet_AC', 'promet_NT'],
+    ['nonpro_AC', 'nonpro_NT'],
+    ['nonpro_AC','promet_NT']
+]
+pair= [['nonpro_NT', 'promet_AC']]
+#median 
+for group1, group2 in pair:
+    median1= adata_auc_thrb.obs.query("comparison == @group1")['THRB'].median()
+    median2= adata_auc_thrb.obs.query("comparison == @group2")['THRB'].median()
+    
+print(f"{group1} median: {median1}| {group2} median: {median2}")
+
+
+
+
+#reformat dict
+from Cellula.dist_features._signatures import scanpy_score, wot_zscore
+from scipy.sparse import csr_matrix 
+from scipy import sparse
+
+regulon_name = list(d_reg.keys())
+n_cells= adata.n_obs
+X = np.zeros((n_cells,len(d_reg)))
+for i , key in enumerate(regulon_name):
+    print(i)
+    regulon=d_reg[key]['gene_set']
+    scores = scanpy_score(adata,regulon)
+    X[:,i] = scores.values.flatten()
+
+#create matrix 
+X_sparse= csr_matrix(X)
+
+#create new Anndata
+common_cells = auc_mtx.index.intersection(adata.obs_names)
+obs_subset = adata.obs.loc[common_cells].copy()
+auc_mtx = auc_mtx.loc[common_cells]
+
+adata_auc = ad.AnnData(X=X_sparse, obs=obs_subset, var=pd.DataFrame(index=regulon_name))
+
+X_dense= adata_auc.X.toarray()
+
+plt.figure(figsize=(8,5))
+plt.hist(X_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
+plt.xlabel("Score")
+plt.ylabel("Frequency")
+plt.title("Distribution of All Scores")
+plt.tight_layout()
+plt.show()
+plt.savefig(os.path.join(path_results, "distribution_scanpyscores.png"), dpi=300)
+
+
+regulon_name = list(d_reg.keys())
+n_cells= adata.n_obs
+N = np.zeros((n_cells,len(d_reg)))
+for i , key in enumerate(regulon_name):
+    print(i)
+    regulon=d_reg[key]['gene_set']
+    scores = wot_zscore(adata,regulon)
+    N[:,i] = scores.values.flatten()
+
+#create matrix 
+N_sparse= csr_matrix(N)
+
+#create new Anndata
+common_cells = auc_mtx.index.intersection(adata.obs_names)
+obs_subset = adata.obs.loc[common_cells].copy()
+auc_mtx = auc_mtx.loc[common_cells]
+
+adata_reg = ad.AnnData(X=N_sparse, obs=obs_subset, var=pd.DataFrame(index=regulon_name))
+
+N_dense= adata_reg.X.toarray()
+
+plt.figure(figsize=(8,5))
+plt.hist(N_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
+plt.xlabel("Score")
+plt.ylabel("Frequency")
+plt.title("Distribution of All Scores")
+plt.tight_layout()
+plt.show()
+plt.savefig(os.path.join(path_results, "distribution_wot_zscore.png"), dpi=300)
+
+
+
+#z-score normalization
+W = adata_auc.X
+
+if sparse.issparse(W):
+    W = W.toarray()
+
+X_zscored= (W - W.mean(axis=0))/ W.std(axis=0)
+
+adata_auc.X = csr_matrix(X_zscored)
+
+X_dense= adata_auc.X.toarray()
+
+plt.figure(figsize=(8,5))
+plt.hist(X_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
+plt.xlabel("Score")
+plt.ylabel("Frequency")
+plt.title("Distribution of All Scores")
+plt.tight_layout()
+plt.show()
+plt.savefig(os.path.join(path_results, "distribution_scanpy_scorezscored.png"), dpi=300)
+
+T = adata_reg.X
+
+if sparse.issparse(T):
+    T = T.toarray()
+
+T_zscored = (T - T.mean(axis=0))/ T.std(axis=0)
+adata_reg.X = csr_matrix(T_zscored)
+
+N_dense= adata_reg.X.toarray()
+
+plt.figure(figsize=(8,5))
+plt.hist(N_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
+plt.xlabel("Score")
+plt.ylabel("Frequency")
+plt.title("Distribution of All Scores")
+plt.tight_layout()
+
+plt.savefig(os.path.join(path_results, "distribution_wotzscored.png"), dpi=300)
+
+
+#violin of scanpy_score and scanpy_score normalized
+adata_auc.obs['THRB_score'] = adata_auc[:,"THRB(+)"].X.toarray().flatten()
+adata_auc.obs['comparison'] = adata_auc_thrb.obs['comparison']
+print(adata_auc.X[0:5,0:5])
+
+fig = plt.figure(figsize=(10, 6))
+ax = fig.add_subplot(111)
+
+pairs = [
+    ['promet_NT', 'nonpro_NT'],
+    ['promet_AC', 'nonpro_AC'],
+    ['promet_AC', 'promet_NT'],
+    ['nonpro_AC', 'nonpro_NT'],
+    ['nonpro_AC','promet_NT']
+]
+order= ['nonpro_NT', 'nonpro_AC', 'promet_NT','promet_AC']
+violin(
+    df=adata_auc.obs,
+    x='comparison',
+    y='THRB_score',
+    ax=ax,
+    x_order=order,
+    add_stats=True,
+    pairs=pairs,
+    linewidth=0.5
+)
+
+# Format the axis
+format_ax(ax, title='THRB scores', 
+          xticks=order, ylabel='Score',reduced_spines=True)
+ax.set_title('THRB scores', fontsize=16, fontweight='bold')
+ax.set_xlabel('Condition', fontsize=14)
+ax.set_ylabel('Score', fontsize=14)
+ax.tick_params(axis='x', labelsize=12)
+ax.tick_params(axis='y', labelsize=12)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, 'THRB_violin_scanpyscores_normalized.png'), dpi=400)
+
 
 
 
