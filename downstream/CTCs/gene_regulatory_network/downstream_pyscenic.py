@@ -56,57 +56,57 @@ metadata = json.loads(decompressed_data)
 
 
 #create new Anndata
-# common_cells = auc_mtx.index.intersection(adata.obs_names)
-# obs_subset = adata.obs.loc[common_cells].copy()
-# auc_mtx = auc_mtx.loc[common_cells]
+common_cells = auc_mtx.index.intersection(adata.obs_names)
+obs_subset = adata.obs.loc[common_cells].copy()
+auc_mtx = auc_mtx.loc[common_cells]
 
-# adata_auc = ad.AnnData(X=auc_mtx.values, obs=obs_subset, var=pd.DataFrame(index=auc_mtx.columns))
-# auc_mtx.columns = auc_mtx.columns.str.replace('(+)', '', regex=False)
-# adata_auc.var['regulon'] = auc_mtx.columns
-# adata_auc.var_names = adata_auc.var['regulon']
+adata_auc = ad.AnnData(X=auc_mtx.values, obs=obs_subset, var=pd.DataFrame(index=auc_mtx.columns))
+auc_mtx.columns = auc_mtx.columns.str.replace('(+)', '', regex=False)
+adata_auc.var['regulon'] = auc_mtx.columns
+adata_auc.var_names = adata_auc.var['regulon']
 
-# def calculate_percent_cells_for_regulons(adata_auc):
-#     """
-#     Calculate the percentage of cells expressing each regulon.
-#     Assumes that regulons are in `adata.var` and the expression data is in `adata.X`.
-#     """
-#     regulon_expr_matrix = adata_auc.X > 0  
-#     percent_cells = np.sum(regulon_expr_matrix, axis=0) / regulon_expr_matrix.shape[0] * 100
+def calculate_percent_cells_for_regulons(adata_auc):
+    """
+    Calculate the percentage of cells expressing each regulon.
+    Assumes that regulons are in `adata.var` and the expression data is in `adata.X`.
+    """
+    regulon_expr_matrix = adata_auc.X > 0  
+    percent_cells = np.sum(regulon_expr_matrix, axis=0) / regulon_expr_matrix.shape[0] * 100
 
-#     adata_auc.var['percent_cells'] = percent_cells
+    adata_auc.var['percent_cells'] = percent_cells
 
-# calculate_percent_cells_for_regulons(adata_auc)
+calculate_percent_cells_for_regulons(adata_auc)
 
-# #add highly_variable_features
-# highly_variable_features = adata.var['highly_variable_features']
-# regulon_to_gene_mapping = {}  
-# for regulon_name in adata_auc.var.index:
-#     gene_name = regulon_name  
-#     regulon_to_gene_mapping[regulon_name] = gene_name
+#add highly_variable_features
+highly_variable_features = adata.var['highly_variable_features']
+regulon_to_gene_mapping = {}  
+for regulon_name in adata_auc.var.index:
+    gene_name = regulon_name  
+    regulon_to_gene_mapping[regulon_name] = gene_name
 
-# adata_auc.var['highly_variable_features'] = [
-#     highly_variable_features.get(regulon_to_gene_mapping[regulon], False)  
-#     for regulon in adata_auc.var.index
-# ]
+adata_auc.var['highly_variable_features'] = [
+    highly_variable_features.get(regulon_to_gene_mapping[regulon], False)  
+    for regulon in adata_auc.var.index
+]
 
-# # add layer RAW 
-# adata_auc.layers['raw'] = adata_auc.X
+# add layer RAW 
+adata_auc.layers['raw'] = adata_auc.X
 
-# #add 'mean' and 'var' columns
-# mean_values = np.array(adata_auc.X.mean(axis=0)).flatten()
-# variance_values = np.array(adata_auc.X.var(axis=0))
+#add 'mean' and 'var' columns
+mean_values = np.array(adata_auc.X.mean(axis=0)).flatten()
+variance_values = np.array(adata_auc.X.var(axis=0))
 
-# adata_auc.var['mean'] = mean_values
-# adata_auc.var['var'] = variance_values
+adata_auc.var['mean'] = mean_values
+adata_auc.var['var'] = variance_values
 
-# X = adata_auc.X
-# # Check if the matrix is dense (numpy ndarray), and if so, convert it to sparse CSR matrix
-# if isinstance(X, np.ndarray):
-#     print("Converting dense matrix to sparse CSR format...")
-#     adata_auc.X = csr_matrix(X)
+X = adata_auc.X
+# Check if the matrix is dense (numpy ndarray), and if so, convert it to sparse CSR matrix
+if isinstance(X, np.ndarray):
+    print("Converting dense matrix to sparse CSR format...")
+    adata_auc.X = csr_matrix(X)
 
-# if adata_auc.X.dtype != 'float32':
-#     adata_auc.X = adata_auc.X.astype('float32')
+if adata_auc.X.dtype != 'float32':
+    adata_auc.X = adata_auc.X.astype('float32')
 
 
 #stats ptx
@@ -372,7 +372,7 @@ adata_auc_thrb.write(os.path.join(path_data, "clustered_thrb.h5ad"))
 adata_auc_thrb= sc.read(os.path.join(path_data,"clustered_thrb.h5ad"))
 
 
-
+from plotting_utils.plotting_base import *
 #functions
 def violin(
     df: pd.DataFrame, 
@@ -631,35 +631,35 @@ plt.show()
 plt.savefig(os.path.join(path_results, "distribution_scanpyscores.png"), dpi=300)
 
 
-regulon_name = list(d_reg.keys())
-n_cells= adata.n_obs
-N = np.zeros((n_cells,len(d_reg)))
-for i , key in enumerate(regulon_name):
-    print(i)
-    regulon=d_reg[key]['gene_set']
-    scores = wot_zscore(adata,regulon)
-    N[:,i] = scores.values.flatten()
+# regulon_name = list(d_reg.keys())
+# n_cells= adata.n_obs
+# N = np.zeros((n_cells,len(d_reg)))
+# for i , key in enumerate(regulon_name):
+#     print(i)
+#     regulon=d_reg[key]['gene_set']
+#     scores = wot_zscore(adata,regulon)
+#     N[:,i] = scores.values.flatten()
 
-#create matrix 
-N_sparse= csr_matrix(N)
+# #create matrix 
+# N_sparse= csr_matrix(N)
 
-#create new Anndata
-common_cells = auc_mtx.index.intersection(adata.obs_names)
-obs_subset = adata.obs.loc[common_cells].copy()
-auc_mtx = auc_mtx.loc[common_cells]
+# #create new Anndata
+# common_cells = auc_mtx.index.intersection(adata.obs_names)
+# obs_subset = adata.obs.loc[common_cells].copy()
+# auc_mtx = auc_mtx.loc[common_cells]
 
-adata_reg = ad.AnnData(X=N_sparse, obs=obs_subset, var=pd.DataFrame(index=regulon_name))
+# adata_reg = ad.AnnData(X=N_sparse, obs=obs_subset, var=pd.DataFrame(index=regulon_name))
 
-N_dense= adata_reg.X.toarray()
+# N_dense= adata_reg.X.toarray()
 
-plt.figure(figsize=(8,5))
-plt.hist(N_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
-plt.xlabel("Score")
-plt.ylabel("Frequency")
-plt.title("Distribution of All Scores")
-plt.tight_layout()
-plt.show()
-plt.savefig(os.path.join(path_results, "distribution_wot_zscore.png"), dpi=300)
+# plt.figure(figsize=(8,5))
+# plt.hist(N_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
+# plt.xlabel("Score")
+# plt.ylabel("Frequency")
+# plt.title("Distribution of All Scores")
+# plt.tight_layout()
+# plt.show()
+# plt.savefig(os.path.join(path_results, "distribution_wot_zscore.png"), dpi=300)
 
 
 
@@ -709,6 +709,7 @@ adata_auc.obs['THRB_score'] = adata_auc[:,"THRB(+)"].X.toarray().flatten()
 adata_auc.obs['comparison'] = adata_auc_thrb.obs['comparison']
 print(adata_auc.X[0:5,0:5])
 
+adata = sc.read(os.path.join(path_data, "clustered_norm.h5ad"))
 fig = plt.figure(figsize=(10, 6))
 ax = fig.add_subplot(111)
 
@@ -721,11 +722,10 @@ pairs = [
 ]
 order= ['nonpro_NT', 'nonpro_AC', 'promet_NT','promet_AC']
 violin(
-    df=adata_auc.obs,
+    df=adata.obs,
     x='comparison',
     y='THRB_score',
     ax=ax,
-    x_order=order,
     add_stats=True,
     pairs=pairs,
     linewidth=0.5
@@ -733,16 +733,95 @@ violin(
 
 # Format the axis
 format_ax(ax, title='THRB scores', 
-          xticks=order, ylabel='Score',reduced_spines=True)
+          xticks=adata.obs['comparison'].cat.categories, ylabel='Score',reduced_spines=True)
 ax.set_title('THRB scores', fontsize=16, fontweight='bold')
 ax.set_xlabel('Condition', fontsize=14)
 ax.set_ylabel('Score', fontsize=14)
 ax.tick_params(axis='x', labelsize=12)
 ax.tick_params(axis='y', labelsize=12)
 fig.tight_layout()
+plt.show()
 fig.savefig(os.path.join(path_results, 'THRB_violin_scanpyscores_normalized.png'), dpi=400)
 
 
+#volcano plot
+adata_auc.write(os.path.join(path_data,"clustered_scanpy_no_norm.h5ad"))
+adata_auc =  sc.read(os.path.join(path_data,"clustered_scanpy_no_norm.h5ad"))
+adata_auc.obs['THRB_score'] = adata_auc[:,"THRB(+)"].X.toarray().flatten()
+adata_auc.obs['comparison'] = adata_auc_thrb.obs['comparison']
 
+def calculate_percent_cells_for_regulons(adata_auc):
+    """
+    Calculate the percentage of cells expressing each regulon.
+    Assumes that regulons are in `adata.var` and the expression data is in `adata.X`.
+    """
+    regulon_expr_matrix = adata_auc.X > 0  
+    percent_cells = np.sum(regulon_expr_matrix, axis=0) / regulon_expr_matrix.shape[0] * 100
 
+    adata_auc.var['percent_cells'] = percent_cells
+
+calculate_percent_cells_for_regulons(adata_auc)
+
+#add highly_variable_features
+highly_variable_features = adata.var['highly_variable_features']
+regulon_to_gene_mapping = {}  
+for regulon_name in adata_auc.var.index:
+    gene_name = regulon_name  
+    regulon_to_gene_mapping[regulon_name] = gene_name
+
+adata_auc.var['highly_variable_features'] = [
+    highly_variable_features.get(regulon_to_gene_mapping[regulon], False)  
+    for regulon in adata_auc.var.index
+]
+
+# add layer RAW 
+adata_auc.layers['raw'] = adata_auc.X
+
+#add 'mean' and 'var' columns
+X = adata_auc.X  
+mean = X.mean(axis=0).A1  
+mean_sq = X.multiply(X).mean(axis=0).A1
+var = mean_sq - mean**2
+mean_values = np.array(adata_auc.X.mean(axis=0)).flatten()
+variance_values = np.array(adata_auc.X.var(axis=0))
+
+adata_auc.var['mean'] = mean_values
+adata_auc.var['var'] = var
+
+X = adata_auc.X
+# Check if the matrix is dense (numpy ndarray), and if so, convert it to sparse CSR matrix
+if isinstance(X, np.ndarray):
+    print("Converting dense matrix to sparse CSR format...")
+    adata_auc.X = csr_matrix(X)
+
+if adata_auc.X.dtype != 'float32':
+    adata_auc.X = adata_auc.X.astype('float32')
+
+adata_auc.obsm['X_reduced'] = adata.obsm['X_reduced']
+## DE ##
+
+# Prep contrast and jobs
+jobs, contrasts = prep_jobs_contrasts(adata_auc, path_data, contrasts_name='paep_contrasts')
+
+# Here we go
+D = Dist_features(adata_auc, contrasts, jobs=jobs)
+D.select_genes()
+for k in D.jobs:
+    for x in D.jobs[k]:
+        if x['model'] == 'wilcoxon':
+            job_key = '|'.join([k, x['features'], x['model']])
+            de_results, gene_set_dict = D.compute_DE(contrast_key=k, which='perc_1_no_miribo')
+            D.Results.add_job_results(de_results, gene_set_dict, job_key=job_key)
+
+dfs = []
+categories= ['nonpro_AC_vs_NT', 'promet_AC_vs_NT', 'promet_AC', 'pro_nonpro_AC', 'promet_NT']
+
+for cat in categories:
+    key = f"{cat}|genes|wilcoxon"
+    df = D.Results.results[key]['df'].copy()
+    df['label'] = cat 
+    dfs.append(df)
+
+all_degs= pd.concat(dfs)
+all_degs.to_csv(os.path.join(path_data, "Degs_regulon.csv"))
 
