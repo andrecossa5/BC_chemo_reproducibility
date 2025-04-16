@@ -52,9 +52,6 @@ metadata = json.loads(decompressed_data)
 
 
 
-
-
-
 #create new Anndata
 common_cells = auc_mtx.index.intersection(adata.obs_names)
 obs_subset = adata.obs.loc[common_cells].copy()
@@ -70,7 +67,7 @@ def calculate_percent_cells_for_regulons(adata_auc):
     Calculate the percentage of cells expressing each regulon.
     Assumes that regulons are in `adata.var` and the expression data is in `adata.X`.
     """
-    regulon_expr_matrix = adata_auc.X > 0  
+    regulon_expr_matrix = adata_auc.X > 0
     percent_cells = np.sum(regulon_expr_matrix, axis=0) / regulon_expr_matrix.shape[0] * 100
 
     adata_auc.var['percent_cells'] = percent_cells
@@ -100,6 +97,7 @@ adata_auc.var['mean'] = mean_values
 adata_auc.var['var'] = variance_values
 
 X = adata_auc.X
+
 # Check if the matrix is dense (numpy ndarray), and if so, convert it to sparse CSR matrix
 if isinstance(X, np.ndarray):
     print("Converting dense matrix to sparse CSR format...")
@@ -109,13 +107,27 @@ if adata_auc.X.dtype != 'float32':
     adata_auc.X = adata_auc.X.astype('float32')
 
 
+#distribution
+if sparse.issparse(adata_auc.X):
+    data = adata_auc.X.toarray().flatten()
+else:
+    data = adata_auc.X.flatten()
+plt.figure(figsize=(8,5))
+plt.hist(data, bins=50, color='steelblue', edgecolor= 'k')
+plt.xlabel("Score")
+plt.ylabel("Frequency")
+plt.title("Distribution of All Scores")
+plt.tight_layout()
+plt.show()
+
+
 #stats ptx
 
 auc_mtx
 gene_counts = [len(d_reg[key]['gene_set']) for key in d_reg]
 mean_gene_count = sum(gene_counts) / len(gene_counts)
-
-
+min_gene = min(gene_counts)
+max_gene = max(gene_counts)
 
 
 
@@ -604,7 +616,6 @@ regulon_name = list(d_reg.keys())
 n_cells= adata.n_obs
 X = np.zeros((n_cells,len(d_reg)))
 for i , key in enumerate(regulon_name):
-    print(i)
     regulon=d_reg[key]['gene_set']
     scores = scanpy_score(adata,regulon)
     X[:,i] = scores.values.flatten()
@@ -664,16 +675,16 @@ plt.savefig(os.path.join(path_results, "distribution_scanpyscores.png"), dpi=300
 
 
 #z-score normalization
-W = adata_auc.X
+W = adata_tmp.X
 
 if sparse.issparse(W):
     W = W.toarray()
 
 X_zscored= (W - W.mean(axis=0))/ W.std(axis=0)
 
-adata_auc.X = csr_matrix(X_zscored)
+adata_tmp.X = csr_matrix(X_zscored)
 
-X_dense= adata_auc.X.toarray()
+X_dense= adata_tmp.X.toarray()
 
 plt.figure(figsize=(8,5))
 plt.hist(X_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
@@ -684,24 +695,24 @@ plt.tight_layout()
 plt.show()
 plt.savefig(os.path.join(path_results, "distribution_scanpy_scorezscored.png"), dpi=300)
 
-T = adata_reg.X
+# T = adata_reg.X
 
-if sparse.issparse(T):
-    T = T.toarray()
+# if sparse.issparse(T):
+#     T = T.toarray()
 
-T_zscored = (T - T.mean(axis=0))/ T.std(axis=0)
-adata_reg.X = csr_matrix(T_zscored)
+# T_zscored = (T - T.mean(axis=0))/ T.std(axis=0)
+# adata_reg.X = csr_matrix(T_zscored)
 
-N_dense= adata_reg.X.toarray()
+# N_dense= adata_reg.X.toarray()
 
-plt.figure(figsize=(8,5))
-plt.hist(N_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
-plt.xlabel("Score")
-plt.ylabel("Frequency")
-plt.title("Distribution of All Scores")
-plt.tight_layout()
+# plt.figure(figsize=(8,5))
+# plt.hist(N_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
+# plt.xlabel("Score")
+# plt.ylabel("Frequency")
+# plt.title("Distribution of All Scores")
+# plt.tight_layout()
 
-plt.savefig(os.path.join(path_results, "distribution_wotzscored.png"), dpi=300)
+# plt.savefig(os.path.join(path_results, "distribution_wotzscored.png"), dpi=300)
 
 
 #violin of scanpy_score and scanpy_score normalized
@@ -746,65 +757,66 @@ fig.savefig(os.path.join(path_results, 'THRB_violin_scanpyscores_normalized.png'
 
 #volcano plot
 adata_auc.write(os.path.join(path_data,"clustered_scanpy_no_norm.h5ad"))
-adata_auc =  sc.read(os.path.join(path_data,"clustered_scanpy_no_norm.h5ad"))
-adata_auc.obs['THRB_score'] = adata_auc[:,"THRB(+)"].X.toarray().flatten()
-adata_auc.obs['comparison'] = adata_auc_thrb.obs['comparison']
+adata_tmp = sc.read(os.path.join(path_data,"clustered_scanpy_no_norm.h5ad"))
+adata_tmp.var['regulon'] = adata_tmp.var_names
+adata_tmp.var['regulon'] = adata_tmp.var_names.str.replace('(+)', '', regex=False)
+adata_tmp.var_names = adata_tmp.var['regulon']
+adata_tmp.obs['THRB_score'] = adata_tmp[:,"THRB"].X.toarray().flatten()
+adata_tmp.obs['comparison'] = adata_auc_thrb.obs['comparison']
 
-def calculate_percent_cells_for_regulons(adata_auc):
-    """
-    Calculate the percentage of cells expressing each regulon.
-    Assumes that regulons are in `adata.var` and the expression data is in `adata.X`.
-    """
-    regulon_expr_matrix = adata_auc.X > 0  
-    percent_cells = np.sum(regulon_expr_matrix, axis=0) / regulon_expr_matrix.shape[0] * 100
+#create column percent_cells
+regulon_expr_matrix = adata_tmp.X > 0
+percent_cells = np.sum(regulon_expr_matrix, axis=0) / regulon_expr_matrix.shape[0] * 100
+adata_tmp.var['percent_cells'] = np.ravel(percent_cells)
 
-    adata_auc.var['percent_cells'] = percent_cells
 
-calculate_percent_cells_for_regulons(adata_auc)
 
 #add highly_variable_features
 highly_variable_features = adata.var['highly_variable_features']
 regulon_to_gene_mapping = {}  
-for regulon_name in adata_auc.var.index:
+for regulon_name in adata_tmp.var.index:
     gene_name = regulon_name  
     regulon_to_gene_mapping[regulon_name] = gene_name
 
-adata_auc.var['highly_variable_features'] = [
+adata_tmp.var['highly_variable_features'] = [
     highly_variable_features.get(regulon_to_gene_mapping[regulon], False)  
-    for regulon in adata_auc.var.index
+    for regulon in adata_tmp.var.index
 ]
 
 # add layer RAW 
-adata_auc.layers['raw'] = adata_auc.X
-
+adata_tmp.layers['raw'] = adata_tmp.X
+from scipy import sparse
 #add 'mean' and 'var' columns
-X = adata_auc.X  
-mean = X.mean(axis=0).A1  
-mean_sq = X.multiply(X).mean(axis=0).A1
-var = mean_sq - mean**2
-mean_values = np.array(adata_auc.X.mean(axis=0)).flatten()
-variance_values = np.array(adata_auc.X.var(axis=0))
 
-adata_auc.var['mean'] = mean_values
-adata_auc.var['var'] = var
 
-X = adata_auc.X
+T = adata_tmp.X
+
+if sparse.issparse(T):
+    T = T.toarray()
+adata_tmp.X = T
+mean_values = np.array(adata_tmp.X.mean(axis=0))
+variance_values = np.array(adata_tmp.X.var(axis=0))
+
+adata_tmp.var['mean'] = mean_values
+adata_tmp.var['var'] = variance_values
+
+
 # Check if the matrix is dense (numpy ndarray), and if so, convert it to sparse CSR matrix
-if isinstance(X, np.ndarray):
+if isinstance(T, np.ndarray):
     print("Converting dense matrix to sparse CSR format...")
-    adata_auc.X = csr_matrix(X)
+    adata_tmp.X = csr_matrix(T)
 
-if adata_auc.X.dtype != 'float32':
-    adata_auc.X = adata_auc.X.astype('float32')
+if adata_tmp.X.dtype != 'float32':
+    adata_tmp.X = adata_tmp.X.astype('float32')
 
-adata_auc.obsm['X_reduced'] = adata.obsm['X_reduced']
+
 ## DE ##
 
 # Prep contrast and jobs
-jobs, contrasts = prep_jobs_contrasts(adata_auc, path_data, contrasts_name='paep_contrasts')
+jobs, contrasts = prep_jobs_contrasts(adata_tmp, path_data, contrasts_name='paep_contrasts')
 
 # Here we go
-D = Dist_features(adata_auc, contrasts, jobs=jobs)
+D = Dist_features(adata_tmp, contrasts, jobs=jobs)
 D.select_genes()
 for k in D.jobs:
     for x in D.jobs[k]:
@@ -823,5 +835,15 @@ for cat in categories:
     dfs.append(df)
 
 all_degs= pd.concat(dfs)
-all_degs.to_csv(os.path.join(path_data, "Degs_regulon.csv"))
+all_degs.to_csv(os.path.join(path_data, "Degs_regulon_scanpy_score.csv"))
+
+#volcano plot
+all_degs= pd.read_csv(os.path.join(path_data, 'Degs_regulon_scanpy_score.csv'), index_col=0)
+all_degs['evidence']= all_degs['evidence'].replace(0, 1e-100)
+fig = volcano(
+    all_degs.query('comparison=="promet_AC0_vs_promet_AC1"'), effect_size='effect_size', evidence='evidence',
+    n=1, annotate=True, xlim=(-2, 2),pseudocount=1e-100
+)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results,"volcano_scanpy_score_norm.png"),dpi=300)
 
