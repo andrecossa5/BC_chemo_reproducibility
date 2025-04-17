@@ -11,14 +11,14 @@ import anndata as ad
 import pandas as pd
 import scanpy as sc
 import loompy as lp
+from scipy import sparse
 from scipy.sparse import csr_matrix
 from Cellula.dist_features._dist_features import *
 from Cellula.dist_features._Dist import *
 from Cellula.plotting._plotting import *
 from Cellula.dist_features._signatures import scanpy_score, wot_zscore
 from matplotlib.gridspec import GridSpec
-import plotting_utils as plu
-from Cellula.plotting._plotting import *
+from plotting_utils.plotting_base import *
 from Cellula._utils import sanitize_neighbors
 from BC_chemo_utils.utils import prep_df_for_dotplot
 from BC_chemo_utils.tests import *
@@ -48,8 +48,6 @@ encoded= lf.attrs['MetaData']
 compressed_data= base64.b64decode(encoded)
 decompressed_data = zlib.decompress(compressed_data)
 metadata = json.loads(decompressed_data)
-
-
 
 
 #create new Anndata
@@ -116,8 +114,9 @@ plt.figure(figsize=(8,5))
 plt.hist(data, bins=50, color='steelblue', edgecolor= 'k')
 plt.xlabel("Score")
 plt.ylabel("Frequency")
-plt.title("Distribution of All Scores")
+plt.title("AUCell scores distribution")
 plt.tight_layout()
+plt.savefig(os.path.join(path_results, "distribution_aucell.png"),dpi=300)
 plt.show()
 
 
@@ -132,13 +131,27 @@ max_gene = max(gene_counts)
 
 
 
+#normalized aucell score 
 
+Z = adata_auc.X
 
+if sparse.issparse(Z):
+    Z = Z.toarray()
 
+X_zscored= (Z - Z.mean(axis=0))/ Z.std(axis=0)
 
+adata_auc.Z = csr_matrix(X_zscored)
 
+X_dense= adata_auc.Z.toarray()
 
-
+plt.figure(figsize=(8,5))
+plt.hist(X_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
+plt.xlabel("Score")
+plt.ylabel("Frequency")
+plt.title("AUCell distribution (Z-score normalized)")
+plt.tight_layout()
+plt.show()
+plt.savefig(os.path.join(path_results, "distribution_aucell_zscored.png"), dpi=3)
 
 
 
@@ -182,104 +195,10 @@ all_degs= pd.concat(dfs)
 all_degs.to_csv(os.path.join(path_data, "Degs_regulon.csv"))
 #where THRB is DE 
 degs_promet_AC=D.Results.results['promet_AC|genes|wilcoxon']['df']
-#Embeddings regulons
 
-# UMAP #15 0,4
-runUmap = umap.UMAP(n_neighbors=30, min_dist=0.4, metric='euclidean').fit_transform
-dr_umap = runUmap( auc_mtx )
-pd.DataFrame(dr_umap, columns=['X', 'Y'], index=auc_mtx.index).to_csv(os.path.join(path_results, "scenic_umap_30.txt"), sep='\t')
-
-dr_umap = pd.read_csv(os.path.join(path_results,'scenic_umap_30.txt'), sep='\t', header=0, index_col=0 )
-
-#Viz 
-umap_array = dr_umap[['X', 'Y']].values
-adata_auc.obsm['X_umap'] = umap_array
-
-embs = (
-    adata_auc.obs
-    .join(
-    pd.DataFrame(
-        adata_auc.obsm['X_umap'], columns=['UMAP1', 'UMAP2'], index=adata_auc.obs_names
-    ))
-)
   
 df_markers = pd.read_csv(os.path.join(path_data, 'Degs_regulon.csv'), index_col=0)
 df_markers['comparison'].unique()
-# Create colors
-cell_state_colors = create_palette(embs, 'condition', 'tab20')
-cell_state_colors['Undefined'] = '#E8E7E7'
-
-## UMAP cell_state + dotplot
-
-
-#def prep_df_for_dotplot(df_markers, n=3):
-"""
-Prep df for dotplot.
-"""
-genes = {}
-comparisons = df_markers['comparison'].unique()
-n=3
-for comparison in comparisons:
-    group = '_vs_'.join(comparison.split('_vs_')[:2])                         
-    print(group)
-    genes[group] = (
-        df_markers.query('comparison == @comparison and perc_FC>1 and AUROC>0.8')
-        .index[:n]
-        .to_list()
-    )
-    print(genes)
-from itertools import chain
-genes_ = list(chain.from_iterable([ genes[x] for x in genes ]))
-
-# Get percs and log2FC
-df = (
-    df_markers
-    .loc[genes_, ['effect_size', 'group_perc', 'comparison']]
-    .reset_index()
-    .rename(columns={'index':'regulon', 'effect_size':'log2FC'})
-)
-
-#Clip 
-df['log2FC'][df['log2FC'] <= np.percentile(df['log2FC'], 5)] = np.percentile(df['log2FC'], 5)
-df['log2FC'][df['log2FC'] >= np.percentile(df['log2FC'], 95)] = np.percentile(df['log2FC'], 95)
-
-    #return df
-
-
-
-
-
-
-fig = plt.figure(figsize=(20,10))
-gs = GridSpec(1, 2, figure=fig, width_ratios=[2,2.5])
-
-ax = fig.add_subplot(gs[0])
-draw_embeddings(
-    embs, cat='condition', ax=ax, title='Condition', 
-    legend_kwargs={
-        'ncols':1, 'colors':cell_state_colors, 
-        'bbox_to_anchor':(1,1), 'loc':'upper left'
-    },
-)
-
-ax = fig.add_subplot(gs[1])
-df_ = prep_df_for_dotplot(df_markers)
-df['comparison'] = df['comparison'].map(lambda x: x.join('_')[0][:-1]) 
-
-sns.scatterplot(
-    data=df, y='comparison', x='regulon', size='group_perc', hue='log2FC', 
-    palette='mako', ax=ax, sizes=(1, 100)
-)
-format_ax(ax, title='Markers', xlabel='Top 3 marker regulons', ylabel='condition', rotx=90)
-ax.legend(loc='center left', bbox_to_anchor=(1,.5), frameon=False)
-
-fig.subplots_adjust(left=.05, right=.9, top=.9, bottom=.2, wspace=1.3)
-# Save
-fig.savefig(os.path.join(path_results, 'regulon_condition_30.png'), dpi=500)
-
-
-
-
 
 
 
@@ -302,22 +221,9 @@ d_reg = {}
 
 if isinstance(metadata.get('regulonThresholds', None), list):
     for item in metadata['regulonThresholds']:
-        
         tf = item.get('regulon')
-        if tf is None:
-            print("Missing 'regulon' key in item:", item)
-            continue
-
-        if tf not in alt_mtx.columns:
-            print(f"Warning: {tf} column is not found in alt_mtx.")
-            continue
-
         motif_data = item.get('motifData', {})
-        print(f"Motif Data: {motif_data}")
-
         genes_for_set = alt_mtx.index[alt_mtx[tf] == 1].tolist()
-        print(f"Genes for {tf}: {genes_for_set}")
-
         d_reg[tf] = {
             'gene_set': genes_for_set,
             'motif_data': motif_data
@@ -337,7 +243,7 @@ for tf, data in d_reg.items():
 
 df = pd.DataFrame(rows)
 df.to_csv(os.path.join(path_results,'regulon_data.csv'), index=False)
-
+df= pd.read_csv(os.path.join(path_results,'regulon_data.csv'))
 
 #Contrasts tested regulons
 d_contrast={}
@@ -360,12 +266,9 @@ for tf, value in d_reg.items():
 #Viz 
 #create column comparison
 contrasts
-contrast= D.contrasts['promet_AC_vs_NT']
-
-adata_auc.obs['promet_AC_vs_NT'] = contrast.category
-
+contrast= D.contrasts['pro_nonpro_AC']
+adata_tmp.obs['pro_nonpro_AC'] = contrast.category
 cols_to_merge = ['nonpro_AC_vs_NT', 'promet_AC_vs_NT', 'promet_AC', 'promet_NT']
-
 adata_auc.obs['comparison'] = adata_auc.obs[cols_to_merge].apply(
     lambda row: next((val for val in row if val != 'to_exclude'), pd.NA),
     axis=1
@@ -379,12 +282,10 @@ thrb_val= auc_mtx['THRB']
 adata_auc_thrb.obs['THRB'] = thrb_val
 
 adata_auc_thrb.write(os.path.join(path_data, "clustered_thrb.h5ad"))
-
-
 adata_auc_thrb= sc.read(os.path.join(path_data,"clustered_thrb.h5ad"))
 
 
-from plotting_utils.plotting_base import *
+
 #functions
 def violin(
     df: pd.DataFrame, 
@@ -532,6 +433,7 @@ def format_ax(
 
     return ax
 
+#to delete
 adata_auc_thrb_clean = adata_auc_thrb[adata_auc_thrb.obs['comparison'].notna()].copy()
 
 adata_auc_thrb_clean.obs['comparison'].unique()
@@ -607,11 +509,7 @@ print(f"{group1} median: {median1}| {group2} median: {median2}")
 
 
 
-#reformat dict
-from Cellula.dist_features._signatures import scanpy_score, wot_zscore
-from scipy.sparse import csr_matrix 
-from scipy import sparse
-
+#re-score values 
 regulon_name = list(d_reg.keys())
 n_cells= adata.n_obs
 X = np.zeros((n_cells,len(d_reg)))
@@ -690,7 +588,7 @@ plt.figure(figsize=(8,5))
 plt.hist(X_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
 plt.xlabel("Score")
 plt.ylabel("Frequency")
-plt.title("Distribution of All Scores")
+plt.title("Scanpy scores distribution (Z-score normalized)")
 plt.tight_layout()
 plt.show()
 plt.savefig(os.path.join(path_results, "distribution_scanpy_scorezscored.png"), dpi=300)
@@ -721,6 +619,7 @@ adata_auc.obs['comparison'] = adata_auc_thrb.obs['comparison']
 print(adata_auc.X[0:5,0:5])
 
 adata = sc.read(os.path.join(path_data, "clustered_norm.h5ad"))
+adata_tmp
 fig = plt.figure(figsize=(10, 6))
 ax = fig.add_subplot(111)
 
@@ -770,7 +669,6 @@ percent_cells = np.sum(regulon_expr_matrix, axis=0) / regulon_expr_matrix.shape[
 adata_tmp.var['percent_cells'] = np.ravel(percent_cells)
 
 
-
 #add highly_variable_features
 highly_variable_features = adata.var['highly_variable_features']
 regulon_to_gene_mapping = {}  
@@ -785,14 +683,13 @@ adata_tmp.var['highly_variable_features'] = [
 
 # add layer RAW 
 adata_tmp.layers['raw'] = adata_tmp.X
-from scipy import sparse
+
 #add 'mean' and 'var' columns
-
-
 T = adata_tmp.X
 
 if sparse.issparse(T):
     T = T.toarray()
+
 adata_tmp.X = T
 mean_values = np.array(adata_tmp.X.mean(axis=0))
 variance_values = np.array(adata_tmp.X.var(axis=0))
@@ -801,7 +698,7 @@ adata_tmp.var['mean'] = mean_values
 adata_tmp.var['var'] = variance_values
 
 
-# Check if the matrix is dense (numpy ndarray), and if so, convert it to sparse CSR matrix
+# Check if the matrix is dense, if so, convert it to sparse CSR matrix
 if isinstance(T, np.ndarray):
     print("Converting dense matrix to sparse CSR format...")
     adata_tmp.X = csr_matrix(T)
@@ -838,12 +735,70 @@ all_degs= pd.concat(dfs)
 all_degs.to_csv(os.path.join(path_data, "Degs_regulon_scanpy_score.csv"))
 
 #volcano plot
+def get_genes_to_annotate_plot(df_, evidence, effect_size, n):
+    df_ = df_[(df_['type'] != 'other')].copy()  # Only 'up' and 'down'
+    df_['score'] = np.abs(df_[effect_size]) * df_[evidence]  # Combined ranking
+    return df_.sort_values('score', ascending=False).head(n).index.tolist()
+
+def volcano_plot_plot(
+    df, effect_size='effect_size', evidence='evidence',
+    t_logFC=1, t_FDR=.1, n=10, title=None, xlim=(-8,8), max_distance=0.5, pseudocount=0,
+    figsize=(5,5), annotate=False, s=5, lines=False
+    ):
+    """
+    Volcano plot
+    """    
+
+    df_ = df.copy()    
+    choices = [
+        (df_[effect_size] >= t_logFC) & (df_[evidence] <= t_FDR),
+        (df_[effect_size] <= -t_logFC) & (df_[evidence] <= t_FDR),
+    ]
+    df_['type'] = np.select(choices, ['up', 'down'], default='other')
+    df_['to_annotate'] = False
+    genes_to_annotate = get_genes_to_annotate_plot(df_, evidence, effect_size, n)
+    df_.loc[genes_to_annotate, 'to_annotate'] = True
+    df_[evidence] = -np.log10(df_[evidence]+pseudocount)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    scatter(df_.query('type == "other"'), effect_size, evidence,  c='darkgrey', s=s, ax=ax)
+    scatter(df_.query('type == "up"'), effect_size, evidence,  c='red', s=s*2, ax=ax)
+    scatter(df_.query('type == "down"'), effect_size, evidence,  c='b', s=s*2, ax=ax)
+
+    ax.set(xlim=xlim)
+
+    if lines:
+        ax.vlines(1, df_[evidence].min(), df_[evidence].max(), colors='r')
+        ax.vlines(-1, df_[evidence].min(), df_[evidence].max(), colors='b')
+        ax.hlines(-np.log10(0.1), xlim[0], xlim[1], colors='k')
+
+    format_ax(ax, title=title, xlabel=f'log2FC', ylabel=f'-log10(FDR)')
+    ax.spines[['top', 'right']].set_visible(False)
+
+    if annotate:
+        ta.allocate_text(
+            fig, ax, 
+            df_.loc[lambda x: x['to_annotate']][effect_size],
+            df_.loc[lambda x: x['to_annotate']][evidence],
+            df_.loc[lambda x: x['to_annotate']].index,
+            x_scatter=df_[effect_size], y_scatter=df_[evidence], 
+            linecolor='black', textsize=8, 
+            max_distance=max_distance, linewidth=0.5, nbr_candidates=100
+        )
+
+    return fig
+
+
+all_degs['comparison'].unique()
+dfs
 all_degs= pd.read_csv(os.path.join(path_data, 'Degs_regulon_scanpy_score.csv'), index_col=0)
-all_degs['evidence']= all_degs['evidence'].replace(0, 1e-100)
-fig = volcano(
-    all_degs.query('comparison=="promet_AC0_vs_promet_AC1"'), effect_size='effect_size', evidence='evidence',
-    n=1, annotate=True, xlim=(-2, 2),pseudocount=1e-100
+df_fixed= all_degs.copy()
+df_fixed['evidence'] = all_degs['evidence'].replace(0, 1e-50)
+df_fixed['evidence'] = df_fixed['evidence'].clip(lower=1e-50)
+fig = volcano_plot_plot(
+    df_fixed.query('comparison=="promet_AC_vs_NT0_vs_promet_AC_vs_NT1"'), effect_size='effect_size', evidence='evidence',
+    n=30, annotate=True, xlim=(-2.5, 2.5),pseudocount=1e-50, title = "Prometastatic AC vs prometastatic NT"
 )
 fig.tight_layout()
-fig.savefig(os.path.join(path_results,"volcano_scanpy_score_norm.png"),dpi=300)
+fig.savefig(os.path.join(path_results,"volcano_scanpy_score_norm_AC_vs_NT.png"),dpi=300)
 
