@@ -23,6 +23,10 @@ from Cellula._utils import sanitize_neighbors
 from BC_chemo_utils.utils import prep_df_for_dotplot
 from BC_chemo_utils.tests import *
 from BC_chemo_utils.plotting import *
+from Cellula.clustering._clustering import *
+from Cellula.preprocessing._pp import * 
+from Cellula.preprocessing._neighbors import *
+from Cellula.preprocessing._embeddings import *
 matplotlib.use('macOSX')
 
 
@@ -40,6 +44,8 @@ lf= lp.connect(os.path.join(path_data, "PAEP_aucell_dropout.loom"), mode="r+", v
 auc_mtx= pd.DataFrame(lf.ca.RegulonsAUC, index=lf.ca.CellID)
 rank_df_10 = pd.read_feather(os.path.join(path_main, "data","CTCs", "grn","resources", "hg38_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather"))
 rank_df_500 = pd.read_feather(os.path.join(path_main, "data","CTCs", "grn","resources", "hg38_500bp_up_100bp_down_full_tx_v10_clust.genes_vs_motifs.rankings.feather"))
+score_df_10=pd.read_feather(os.path.join(path_main, "data","CTCs", "grn","resources", "hg38_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.scores.feather"))
+score_df_500= pd.read_feather(os.path.join(path_main, "data","CTCs", "grn","resources", "hg38_500bp_up_100bp_down_full_tx_v10_clust.genes_vs_motifs.scores.feather"))
 #reformat motif 
 df_motif.columns = df_motif.columns.str.lstrip('#*')
 
@@ -470,21 +476,30 @@ fig.savefig(os.path.join(path_results, 'THRB_violin.png'), dpi=400)
 adata_auc_thrb.var.drop('THRB', inplace=True)
 
 #umap
-adata_tmp=adata.copy()
-adata_tmp.obs['TF_THRB']=adata_auc_thrb.obs['THRB']
-adata_tmp.obs['comparison']= adata_auc_thrb.obs['comparison']
-regulon_to_plot=['TF_THRB']
+adata_mp=adata.copy()
+adata_mp.obs['THRB_score'] = adata_tmp[:,"THRB"].X.toarray().flatten()
+adata_mp.obs['comparison']= adata_auc_thrb.obs['comparison']
+regulon_to_plot=['THRB_score_promet_NT']
+adata_mp.obs['promet_NT'] = adata_mp.obs['comparison'].apply(lambda x: x if x == 'promet_NT' else np.nan)
+adata_mp.obs['THRB_score_promet_NT'] = adata_mp.obs.apply(
+    lambda row: row['THRB_score'] if pd.notnull(row['promet_NT']) else np.nan,
+    axis=1
+)
 
 #save umap
-plt.figure(figsize=(8, 6))  
-sc.pl.umap(adata_tmp, color='comparison', cmap='viridis', vmin=0, show=False)
-plt.savefig("umap_comparison.png", dpi=300, bbox_inches='tight')  
+plt.figure(figsize=(6, 6))  
+sc.pl.umap(adata_mp, color='comparison', cmap='viridis', vmin=0, show=False)
+plt.savefig(os.path.join(path_results,"umap_comparison.png"), dpi=300, bbox_inches='tight')
 plt.close()
 
-plt.figure(figsize=(8, 6))  
-sc.pl.umap(adata_tmp, color=regulon_to_plot, cmap='viridis', vmin=0, show=False)
-plt.savefig("umap_THRB.png", dpi=300, bbox_inches='tight')  
+plt.figure(figsize=(6, 6))  
+sc.pl.umap(adata_mp, color=regulon_to_plot, cmap='viridis', vmin=0, show=False)
+plt.savefig(os.path.join(path_results,"umap_THRB_promet_NT.png"), dpi=300, bbox_inches='tight')
 plt.close()
+
+
+
+
 
 
 
@@ -802,3 +817,91 @@ fig = volcano_plot_plot(
 fig.tight_layout()
 fig.savefig(os.path.join(path_results,"volcano_scanpy_score_norm_AC_vs_NT.png"),dpi=300)
 
+
+#thrb genes
+thrb_genes = reg_paep['THRB(+)']['gene_set']
+
+#umap single genes
+adata_mp=adata.copy()
+adata_mp.obs['comparison']= adata_auc_thrb.obs['comparison']
+for gene in thrb_genes:
+    plt.figure(figsize=(6, 6))  
+    sc.pl.umap(adata_mp, color=gene, cmap='viridis', vmin=0,show=False)
+    filename=f"umap_{gene}.png"
+    plt.savefig(os.path.join(path_results,filename), dpi=300, bbox_inches='tight')
+
+#mean expression genes belonging to thrb regulon in adata 
+gene_means= {}
+
+for gene in thrb_genes:
+    if gene in adata_mp.var_names:
+        gene_expr= adata_mp[:,gene].X.toarray().flatten()
+
+        temp_df=pd.DataFrame({
+            'expression': gene_expr,
+            'comparison': adata_mp.obs['comparison'].values
+        })
+
+        mean_values= temp_df.groupby('comparison')['expression'].mean()
+        gene_means[gene] = mean_values
+
+#violin plot of each gene of thrb regulon
+for gene in thrb_genes:
+    adata_mp.obs[f'{gene}_score'] = adata_mp[:, gene].X.toarray().flatten() 
+
+    fig = plt.figure(figsize=(10, 6))
+    ax = fig.add_subplot(111)
+
+    pairs = [
+        ['promet_NT', 'nonpro_NT'],
+        ['promet_AC', 'nonpro_AC'],
+        ['promet_AC', 'promet_NT'],
+        ['nonpro_AC', 'nonpro_NT'],
+        ['nonpro_AC','promet_NT']
+    ]
+    order= ['nonpro_NT', 'nonpro_AC', 'promet_NT','promet_AC']
+    violin(
+        df=adata_mp.obs,
+        x='comparison',
+        y=f'{gene}_score',
+        ax=ax,
+        add_stats=True,
+        pairs=pairs,
+        linewidth=0.5
+    )
+
+    # Format the axis
+    format_ax(ax, title=f'{gene} scores', 
+            xticks=adata_mp.obs['comparison'].cat.categories, ylabel='Score',reduced_spines=True)
+    ax.set_title(f'{gene} scores', fontsize=16, fontweight='bold')
+    ax.set_xlabel('Condition', fontsize=14)
+    ax.set_ylabel('Score', fontsize=14)
+    ax.tick_params(axis='x', labelsize=12)
+    ax.tick_params(axis='y', labelsize=12)
+    fig.tight_layout()
+    fig.savefig(os.path.join(path_results, f'{gene}_violin.png'), dpi=400)
+
+
+
+
+
+#Thrb regulatory region
+motif_paep = reg_paep['THRB(+)']['motif_data']
+
+origin_thrb= regulons[regulons['TF']== 'THRB']
+origin_hmga1= regulons[regulons['TF']== 'HMGA1']
+origin_hmga1.to_csv(os.path.join(path_results,"hmga1_origin.csv"), index=False)
+origin_thrb.to_csv(os.path.join(path_results,"thrb_origin.csv"), index=False)
+origin_thrb= pd.read_csv(os.path.join(path_results,"thrb_origin.csv"))
+
+df_= score_df_500[score_df_500['motifs']== 'tfdimers__MD00459']
+targets_values = regulons[['TF','TargetGenes']]
+target_values_thrb= targets_values[targets_values['TF']== 'THRB']
+
+
+#GSEA on regulons DEGs
+
+
+
+
+     
