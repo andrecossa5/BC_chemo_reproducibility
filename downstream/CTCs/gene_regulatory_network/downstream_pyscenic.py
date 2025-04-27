@@ -31,6 +31,7 @@ matplotlib.use('macOSX')
 
 
 
+
 #Paths
 path_main = "/Users/ieo7295/Desktop/BC_chemo_reproducibility"
 path_data= os.path.join(path_main,"data", "MDA")
@@ -848,7 +849,12 @@ for gene in thrb_genes:
 #violin plot of each gene of thrb regulon
 for gene in thrb_genes:
     adata_mp.obs[f'{gene}_score'] = adata_mp[:, gene].X.toarray().flatten() 
-
+    order= ['nonpro_NT', 'nonpro_AC', 'promet_NT','promet_AC']
+    adata_mp.obs['comparison'] = pd.Categorical(
+        adata_mp.obs['comparison'],
+        categories=order,
+        ordered=True
+    )
     fig = plt.figure(figsize=(10, 6))
     ax = fig.add_subplot(111)
 
@@ -859,7 +865,6 @@ for gene in thrb_genes:
         ['nonpro_AC', 'nonpro_NT'],
         ['nonpro_AC','promet_NT']
     ]
-    order= ['nonpro_NT', 'nonpro_AC', 'promet_NT','promet_AC']
     violin(
         df=adata_mp.obs,
         x='comparison',
@@ -867,6 +872,7 @@ for gene in thrb_genes:
         ax=ax,
         add_stats=True,
         pairs=pairs,
+        x_order=order,
         linewidth=0.5
     )
 
