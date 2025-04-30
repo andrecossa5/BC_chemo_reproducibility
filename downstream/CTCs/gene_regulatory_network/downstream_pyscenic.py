@@ -11,10 +11,14 @@ import anndata as ad
 import pandas as pd
 import scanpy as sc
 import loompy as lp
+from gseapy import prerank
+import gc
+from multiprocessing import cpu_count
 from scipy import sparse
 from scipy.sparse import csr_matrix
 from Cellula.dist_features._dist_features import *
 from Cellula.dist_features._Dist import *
+from Cellula.dist_features._Gene_set import Gene_set
 from Cellula.plotting._plotting import *
 from Cellula.dist_features._signatures import scanpy_score, wot_zscore
 from matplotlib.gridspec import GridSpec
@@ -749,12 +753,88 @@ for cat in categories:
 
 all_degs= pd.concat(dfs)
 all_degs.to_csv(os.path.join(path_data, "Degs_regulon_scanpy_score.csv"))
+all_degs=pd.read_csv(os.path.join(path_data, "Degs_regulon_scanpy_score.csv"))
+
+promet=all_degs[all_degs['comparison']== 'promet_AC_vs_NT0_vs_promet_AC_vs_NT1']
+promet['effect_size']
+promet.to_csv(os.path.join(path_results,'DEgs_promet_AC_vs_promet_NT.csv'))
+all_degs['comparison'].unique()
+
+
+
+# #def compute_GSEA_for_single_contrast(all_degs, contrast, covariate='effect_size',
+#                                      collection='GO_Biological_Process_2023', n_out=50):
+#     """
+#     Perform Gene Set Enrichment Analysis (GSEA) for a single contrast using effect_size (logFC).
+    
+#     Parameters:
+#         - regulon_results: DataFrame containing regulon results with multiple contrasts
+#         - contrast: Contrast to process (e.g., 'nonpro_AC_vs_NT')
+#         - covariate: Metric to rank regulons by (e.g., 'effect_size')
+#         - by: Sorting criteria for GSEA results (e.g., 'Adjusted P-value')
+#         - collection: Gene set collection for GSEA (e.g., 'GO_Biological_Process_2021')
+#         - n_out: Number of top results to return
+    
+#     Returns:
+#         - GSEA results for the contrast
+#     """
+n_out=50
+collection='MSigDB_Hallmark_2020'
+contrast='promet_AC_vs_NT0_vs_promet_AC_vs_NT1'
+contrast_results = all_degs[all_degs['comparison'] == contrast]
+covariate='effect_size'
+#if covariate not in contrast_results.columns:
+    #raise ValueError(f"Covariate '{covariate}' not found in the regulon results for contrast '{contrast}'.")
+
+ranked_regulon_list = contrast_results[['regulon', covariate]].dropna()
+ranked_regulon_list = ranked_regulon_list.sort_values(covariate, ascending=False)  
+ranked_regulon_list = ranked_regulon_list.set_index('regulon')[covariate]
+
+# Perform GSEA using gseapy.prerank
+results = prerank(
+    rnk=ranked_regulon_list,
+    gene_sets=[collection],
+    threads=cpu_count(),
+    min_size=15,
+    max_size=500,
+    permutation_num=200,
+    outdir=None,
+    seed=1234,
+    verbose=True,
+)
+
+df = results.res2d.loc[:, ['Term', 'ES', 'NES', 'FDR q-val','Lead_genes']].rename(columns={'FDR q-val': 'Adjusted P-value'})
+df['Term'] = df['Term'].map(lambda x: x.split('__')[1] if '__' in x else x)
+df = df.set_index('Term')
+df.to_csv(os.path.join(path_results,'Gsea_promet_AC_vs_nonpro_AC.csv'))
+
+#Viz GSEA 
+fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+
+stem_plot(
+    df[['ES', 'NES', 'Adjusted P-value']].sort_values('NES', ascending=False).head(25),
+    'NES',
+    ax=ax
+)
+format_ax(ax, title='GSEA', xlabel='NES')
+
+fig.suptitle(f'GSEA: Prometastatic AC vs Prometastatic NT')
+fig.tight_layout()
+fig.savefig(os.path.join(path_results,"gsea_Prometastatic_AC_vs_prometastatic_NT_hallmark'.png"),dpi=300)
+
+
+
+
+
+
+
 
 #volcano plot
 def get_genes_to_annotate_plot(df_, evidence, effect_size, n):
-    df_ = df_[(df_['type'] != 'other')].copy()  # Only 'up' and 'down'
-    df_['score'] = np.abs(df_[effect_size]) * df_[evidence]  # Combined ranking
+    df_ = df_[(df_['type'] != 'other')].copy()  
+    df_['score'] = np.abs(df_[effect_size]) * df_[evidence]  
     return df_.sort_values('score', ascending=False).head(n).index.tolist()
+
 
 def volcano_plot_plot(
     df, effect_size='effect_size', evidence='evidence',
@@ -806,17 +886,18 @@ def volcano_plot_plot(
 
 
 all_degs['comparison'].unique()
-dfs
+prometnt=all_degs[all_degs['label']=='promet_AC']
 all_degs= pd.read_csv(os.path.join(path_data, 'Degs_regulon_scanpy_score.csv'), index_col=0)
 df_fixed= all_degs.copy()
 df_fixed['evidence'] = all_degs['evidence'].replace(0, 1e-50)
 df_fixed['evidence'] = df_fixed['evidence'].clip(lower=1e-50)
 fig = volcano_plot_plot(
     df_fixed.query('comparison=="promet_AC_vs_NT0_vs_promet_AC_vs_NT1"'), effect_size='effect_size', evidence='evidence',
-    n=30, annotate=True, xlim=(-2.5, 2.5),pseudocount=1e-50, title = "Prometastatic AC vs prometastatic NT"
+    n=30, annotate=True, xlim=(-2.5, 2.5),pseudocount=1e-50, title = "Prometastatic NT vs non-prometastatic NT"
 )
 fig.tight_layout()
-fig.savefig(os.path.join(path_results,"volcano_scanpy_score_norm_AC_vs_NT.png"),dpi=300)
+plt.show()
+fig.savefig(os.path.join(path_results,"volcano_scanpy_score_norm_prometNT_vs_nonNT.png"),dpi=300)
 
 
 #thrb genes
@@ -893,7 +974,7 @@ for gene in thrb_genes:
 
 #Thrb regulatory region
 motif_paep = reg_paep['THRB(+)']['motif_data']
-
+gene_hmga1 = d_reg['HMGA1(+)']['gene_set']
 origin_thrb= regulons[regulons['TF']== 'THRB']
 origin_hmga1= regulons[regulons['TF']== 'HMGA1']
 origin_hmga1.to_csv(os.path.join(path_results,"hmga1_origin.csv"), index=False)
@@ -904,8 +985,28 @@ df_= score_df_500[score_df_500['motifs']== 'tfdimers__MD00459']
 targets_values = regulons[['TF','TargetGenes']]
 target_values_thrb= targets_values[targets_values['TF']== 'THRB']
 
+for x in origin_hmga1['TargetGenes']:
+    print(x)
+motif_paep = reg_paep['THRB(+)']['motif_data']
 
-#GSEA on regulons DEGs
+
+
+#boxplot sh conditions with PCA activity score for THRB
+df_activity= pd.read_csv(os.path.join(path_results,"thrb_genes_expression_bulk.csv"),index_col=0)
+
+fig, ax = plt.subplots(figsize=(4,4))
+order = ['shSCR', 'shPAEP']
+box(
+    df_activity, 
+    x='Condition', y='ActivityScore', ax=ax, c='grey', with_stats=True, 
+    pairs=[['shSCR', 'shPAEP']], 
+    order=order
+)
+strip(df_activity, 
+    x='Condition', y='ActivityScore', ax=ax, c='k', order=order)
+format_ax(ax=ax, title='n clones', ylabel='n', rotx=90)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, f'thrb_activity_shPAEP.png'), dpi=300)
 
 
 
