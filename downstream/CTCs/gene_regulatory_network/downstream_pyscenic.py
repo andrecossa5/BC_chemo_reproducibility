@@ -7,30 +7,27 @@ import base64
 import zlib
 import json
 import umap
+import matplotlib.axes
+import textalloc as ta
+from typing import Dict, Iterable, Any, Tuple
+from matplotlib.lines import Line2D 
 import anndata as ad
 import pandas as pd
 import scanpy as sc
 import loompy as lp
-from gseapy import prerank
-import gc
-from multiprocessing import cpu_count
+import seaborn as sns
+import matplotlib.pyplot as plt
 from scipy import sparse
 from scipy.sparse import csr_matrix
 from Cellula.dist_features._dist_features import *
 from Cellula.dist_features._Dist import *
-from Cellula.dist_features._Gene_set import Gene_set
-from Cellula.plotting._plotting import *
+from Cellula.dist_features._Gene_set import *
 from Cellula.dist_features._signatures import scanpy_score, wot_zscore
 from matplotlib.gridspec import GridSpec
-from plotting_utils.plotting_base import *
-from Cellula._utils import sanitize_neighbors
+from plotting_utils import plotting_base
+import plotting_utils as plu
 from BC_chemo_utils.utils import prep_df_for_dotplot
 from BC_chemo_utils.tests import *
-from BC_chemo_utils.plotting import *
-from Cellula.clustering._clustering import *
-from Cellula.preprocessing._pp import * 
-from Cellula.preprocessing._neighbors import *
-from Cellula.preprocessing._embeddings import *
 matplotlib.use('macOSX')
 
 
@@ -59,6 +56,27 @@ encoded= lf.attrs['MetaData']
 compressed_data= base64.b64decode(encoded)
 decompressed_data = zlib.decompress(compressed_data)
 metadata = json.loads(decompressed_data)
+
+#Reformat regulons 
+regulons.columns = regulons.iloc[0]         
+regulons = regulons.drop(index=[0])     
+regulons.columns.values[0] = regulons.iloc[0, 0]  
+regulons.columns.values[1] = regulons.iloc[0, 1]
+regulons= regulons.drop(index=[1]).reset_index(drop=True)
+
+#new files (d_reg, adata_auc_thrb, adata_sc)
+d_reg= pd.read_csv(os.path.join(path_results,'regulon_data.csv'))
+adata_auc_thrb= sc.read(os.path.join(path_data,"clustered_thrb.h5ad"))
+adata_sc = sc.read(os.path.join(path_data,"clustered_scanpy_no_norm.h5ad"))
+# adata_sc.layers['raw'] = adata_sc.X
+# adata_sc.var['regulon'] = adata_sc.var_names
+# adata_sc.var['regulon'] = adata_sc.var_names.str.replace('(+)', '', regex=False)
+# adata_sc.var_names = adata_sc.var['regulon']
+# adata_sc.obs['THRB_score'] = adata_sc[:,"THRB"].X.toarray().flatten()
+# adata_sc.obs['comparison'] = adata_auc_thrb.obs['comparison']
+# adata_sc.write(os.path.join(path_data, "clustered_norm.h5ad"))
+adata_sc=sc.read(os.path.join(path_data, "clustered_norm.h5ad"))
+all_degs=pd.read_csv(os.path.join(path_data, "Degs_regulon_scanpy_score.csv"))
 
 
 #create new Anndata
@@ -132,7 +150,6 @@ plt.show()
 
 
 #stats ptx
-
 auc_mtx
 gene_counts = [len(d_reg[key]['gene_set']) for key in d_reg]
 mean_gene_count = sum(gene_counts) / len(gene_counts)
@@ -143,7 +160,6 @@ max_gene = max(gene_counts)
 
 
 #normalized aucell score 
-
 Z = adata_auc.X
 
 if sparse.issparse(Z):
@@ -170,15 +186,7 @@ plt.savefig(os.path.join(path_results, "distribution_aucell_zscored.png"), dpi=3
 
 
 
-
-
-
-
-
-
-
-
-## DE ##
+## DE ## AUCELL SCORES
 
 # Prep contrast and jobs
 jobs, contrasts = prep_jobs_contrasts(adata_auc, path_data, contrasts_name='paep_contrasts')
@@ -214,15 +222,6 @@ df_markers['comparison'].unique()
 
 
 
-
-
-#Reformat regulons 
-regulons.columns = regulons.iloc[0]         
-regulons = regulons.drop(index=[0])     
-regulons.columns.values[0] = regulons.iloc[0, 0]  
-regulons.columns.values[1] = regulons.iloc[0, 1]
-regulons= regulons.drop(index=[1]).reset_index(drop=True)
-
 #Regulon : tf + gene_set
 alt_mtx = pd.DataFrame(lf.ra.Regulons, index=lf.ra.Gene)
 
@@ -254,7 +253,7 @@ for tf, data in d_reg.items():
 
 df = pd.DataFrame(rows)
 df.to_csv(os.path.join(path_results,'regulon_data.csv'), index=False)
-df= pd.read_csv(os.path.join(path_results,'regulon_data.csv'))
+
 
 #Contrasts tested regulons
 d_contrast={}
@@ -264,14 +263,17 @@ for key,value in d_reg.items():
         d_contrast[key] = value
 
 #N regulons with PAEP
-reg_paep = {}
-for tf, value in d_reg.items():
-    gene_set = value.get('gene_set', [])
-    if 'PAEP' in gene_set:
-        reg_paep[tf] = {
-            'gene_set': gene_set,
-            'motif_data': value.get('motif_data', {})
-        }
+d_reg['gene_set'] = d_reg['gene_set'].apply(lambda x: [gene.strip() for gene in x.split(',')])
+reg_paep_df = d_reg[d_reg['gene_set'].apply(lambda genes: 'PAEP' in genes)]
+reg_paep = {
+    row['regulon']: {
+        'gene_set': row['gene_set'],
+        'motif_data': row.get('motif_data', {})
+    }
+    for _, row in reg_paep_df.iterrows()
+}
+
+
 
 
 #Viz 
@@ -295,8 +297,6 @@ adata_auc_thrb.obs['THRB'] = thrb_val
 adata_auc_thrb.write(os.path.join(path_data, "clustered_thrb.h5ad"))
 adata_auc_thrb= sc.read(os.path.join(path_data,"clustered_thrb.h5ad"))
 
-
-
 #functions
 def violin(
     df: pd.DataFrame, 
@@ -317,7 +317,7 @@ def violin(
     params = {   
         'inner' : 'quart'
     }    
-    params = update_params(params, kwargs)
+    params = plu.update_params(params, kwargs)
 
     # Handle colors and by
     if by is None:
@@ -334,7 +334,7 @@ def violin(
         if pd.api.types.is_string_dtype(df[by]) or df[by].dtype == 'category':
             
             if isinstance(categorical_cmap, str):
-                _cmap = create_palette(df, by, palette=categorical_cmap)
+                _cmap = plu.create_palette(df, by, palette=categorical_cmap)
             else:
                 _cmap = categorical_cmap
 
@@ -356,91 +356,7 @@ def violin(
         raise KeyError(f'{by} not in df.columns!')
 
     if add_stats:
-        add_wilcox(df, x, y, pairs, ax, order=x_order)
-
-    return ax
-
-def add_wilcox(
-    df: pd.DataFrame, 
-    x: str, 
-    y: str, 
-    pairs: Iterable[Iterable[str]], 
-    ax:  matplotlib.axes.Axes = None, 
-    order: Iterable[str] = None
-    ):
-    """
-    Add statistical annotations (basic tests from statannotations).
-    """
-    annotator = Annotator(ax, pairs, data=df, x=x, y=y, order=order)
-    annotator.configure(
-        test='Mann-Whitney', text_format='star', show_test_name=False,
-        line_height=0.001, text_offset=3
-    )
-    annotator.apply_and_annotate()
-
-
-def format_ax(
-    ax: matplotlib.axes.Axes = None, 
-    title: str = None, 
-    xlabel: str = None, 
-    ylabel: str = None, 
-    xticks: Iterable[Any] = None, 
-    yticks: Iterable[Any] = None, 
-    rotx: float = 0, 
-    roty: float = 0, 
-    axis: bool = True,
-    xlabel_size: float = None, 
-    ylabel_size: float = None,
-    xticks_size: float = None, 
-    yticks_size: float = None,
-    title_size: float = None, 
-    log: bool = False, 
-    reduced_spines: bool = False
-    ) -> matplotlib.axes.Axes:
-    """
-    Format labels, ticks and stuff of an ax: matplotlib.axes.Axes object.
-    """
-
-    if log:
-        ax.set_yscale('log')
-    
-    if title is not None:
-        ax.set(title=title)
-    
-    if xlabel is not None:
-        ax.set(xlabel=xlabel)
-    
-    if xlabel is not None:
-        ax.set(ylabel=ylabel)
-
-    if xticks is not None:
-        ax.set_xticks([ i for i in range(len(xticks)) ])
-        ax.set_xticklabels(xticks)
-    if yticks is not None:
-        ax.set_yticks([ i for i in range(len(yticks)) ])
-        ax.set_yticklabels(yticks)
-
-    if xticks_size is not None:
-        ax.xaxis.set_tick_params(labelsize=xticks_size)
-    if yticks_size is not None:
-        ax.yaxis.set_tick_params(labelsize=yticks_size)
-
-    if xlabel_size is not None:
-        ax.xaxis.label.set_size(xlabel_size)
-    if ylabel_size is not None:
-        ax.yaxis.label.set_size(ylabel_size)
-
-    ax.tick_params(axis='x', labelrotation = rotx)
-    ax.tick_params(axis='y', labelrotation = roty)
-
-    if title_size is not None:
-        ax.set_title(title, fontdict={'fontsize': title_size})
-    
-    if reduced_spines:
-        ax.spines[['right', 'top']].set_visible(False)
-    
-    if not axis:
-        ax.axis('off')
+        plu.add_wilcox(df, x, y, pairs, ax, order=x_order)
 
     return ax
 
@@ -471,10 +387,9 @@ violin(
 )
 
 # Format the axis
-format_ax(ax, title='THRB scores', 
+plu.format_ax(ax, title='THRB scores', 
           xticks=adata_auc_thrb_clean.obs['comparison'].cat.categories, ylabel='Score', reduced_spines=True)
 fig.tight_layout()
-plt.show()
 fig.savefig(os.path.join(path_results, 'THRB_violin.png'), dpi=400)
 
 
@@ -482,7 +397,7 @@ adata_auc_thrb.var.drop('THRB', inplace=True)
 
 #umap
 adata_mp=adata.copy()
-adata_mp.obs['THRB_score'] = adata_tmp[:,"THRB"].X.toarray().flatten()
+adata_mp.obs['THRB_score'] = adata_sc[:,"THRB"].X.toarray().flatten()
 adata_mp.obs['comparison']= adata_auc_thrb.obs['comparison']
 regulon_to_plot=['THRB_score_promet_NT']
 adata_mp.obs['promet_NT'] = adata_mp.obs['comparison'].apply(lambda x: x if x == 'promet_NT' else np.nan)
@@ -502,29 +417,6 @@ sc.pl.umap(adata_mp, color=regulon_to_plot, cmap='viridis', vmin=0, show=False)
 plt.savefig(os.path.join(path_results,"umap_THRB_promet_NT.png"), dpi=300, bbox_inches='tight')
 plt.close()
 
-
-
-
-
-
-
-#adata_tmp=adata_auc_thrb_clean.copy()
-# adata_tmp= adata_auc_thrb_clean[adata_auc_thrb_clean.obs['THRB'] != 0]
-# adata_tmp.obs
-pairs=[
-    ['promet_NT', 'nonpro_NT'],
-    ['promet_AC', 'nonpro_AC'],
-    ['promet_AC', 'promet_NT'],
-    ['nonpro_AC', 'nonpro_NT'],
-    ['nonpro_AC','promet_NT']
-]
-pair= [['nonpro_NT', 'promet_AC']]
-#median 
-for group1, group2 in pair:
-    median1= adata_auc_thrb.obs.query("comparison == @group1")['THRB'].median()
-    median2= adata_auc_thrb.obs.query("comparison == @group2")['THRB'].median()
-    
-print(f"{group1} median: {median1}| {group2} median: {median2}")
 
 
 
@@ -593,16 +485,16 @@ plt.savefig(os.path.join(path_results, "distribution_scanpyscores.png"), dpi=300
 
 
 #z-score normalization
-W = adata_tmp.X
+W = adata_sc.X
 
 if sparse.issparse(W):
     W = W.toarray()
 
 X_zscored= (W - W.mean(axis=0))/ W.std(axis=0)
 
-adata_tmp.X = csr_matrix(X_zscored)
+adata_sc.X = csr_matrix(X_zscored)
 
-X_dense= adata_tmp.X.toarray()
+X_dense= adata_sc.X.toarray()
 
 plt.figure(figsize=(8,5))
 plt.hist(X_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
@@ -612,6 +504,7 @@ plt.title("Scanpy scores distribution (Z-score normalized)")
 plt.tight_layout()
 plt.show()
 plt.savefig(os.path.join(path_results, "distribution_scanpy_scorezscored.png"), dpi=300)
+
 
 # T = adata_reg.X
 
@@ -639,7 +532,6 @@ adata_auc.obs['comparison'] = adata_auc_thrb.obs['comparison']
 print(adata_auc.X[0:5,0:5])
 
 adata = sc.read(os.path.join(path_data, "clustered_norm.h5ad"))
-adata_tmp
 fig = plt.figure(figsize=(10, 6))
 ax = fig.add_subplot(111)
 
@@ -676,64 +568,58 @@ fig.savefig(os.path.join(path_results, 'THRB_violin_scanpyscores_normalized.png'
 
 #volcano plot
 adata_auc.write(os.path.join(path_data,"clustered_scanpy_no_norm.h5ad"))
-adata_tmp = sc.read(os.path.join(path_data,"clustered_scanpy_no_norm.h5ad"))
-adata_tmp.var['regulon'] = adata_tmp.var_names
-adata_tmp.var['regulon'] = adata_tmp.var_names.str.replace('(+)', '', regex=False)
-adata_tmp.var_names = adata_tmp.var['regulon']
-adata_tmp.obs['THRB_score'] = adata_tmp[:,"THRB"].X.toarray().flatten()
-adata_tmp.obs['comparison'] = adata_auc_thrb.obs['comparison']
 
 #create column percent_cells
-regulon_expr_matrix = adata_tmp.X > 0
+regulon_expr_matrix = adata_sc.X > 0
 percent_cells = np.sum(regulon_expr_matrix, axis=0) / regulon_expr_matrix.shape[0] * 100
-adata_tmp.var['percent_cells'] = np.ravel(percent_cells)
+adata_sc.var['percent_cells'] = np.ravel(percent_cells)
 
 
 #add highly_variable_features
 highly_variable_features = adata.var['highly_variable_features']
 regulon_to_gene_mapping = {}  
-for regulon_name in adata_tmp.var.index:
+for regulon_name in adata_sc.var.index:
     gene_name = regulon_name  
     regulon_to_gene_mapping[regulon_name] = gene_name
 
-adata_tmp.var['highly_variable_features'] = [
+adata_sc.var['highly_variable_features'] = [
     highly_variable_features.get(regulon_to_gene_mapping[regulon], False)  
-    for regulon in adata_tmp.var.index
+    for regulon in adata_sc.var.index
 ]
 
 # add layer RAW 
-adata_tmp.layers['raw'] = adata_tmp.X
+#adata_tmp.layers['raw'] = adata_tmp.X
 
 #add 'mean' and 'var' columns
-T = adata_tmp.X
+T = adata_sc.X
 
 if sparse.issparse(T):
     T = T.toarray()
 
-adata_tmp.X = T
-mean_values = np.array(adata_tmp.X.mean(axis=0))
-variance_values = np.array(adata_tmp.X.var(axis=0))
+adata_sc.X = T
+mean_values = np.array(adata_sc.X.mean(axis=0))
+variance_values = np.array(adata_sc.X.var(axis=0))
 
-adata_tmp.var['mean'] = mean_values
-adata_tmp.var['var'] = variance_values
+adata_sc.var['mean'] = mean_values
+adata_sc.var['var'] = variance_values
 
 
 # Check if the matrix is dense, if so, convert it to sparse CSR matrix
 if isinstance(T, np.ndarray):
     print("Converting dense matrix to sparse CSR format...")
-    adata_tmp.X = csr_matrix(T)
+    adata_sc.X = csr_matrix(T)
 
-if adata_tmp.X.dtype != 'float32':
-    adata_tmp.X = adata_tmp.X.astype('float32')
+if adata_sc.X.dtype != 'float32':
+    adata_sc.X = adata_sc.X.astype('float32')
 
 
 ## DE ##
 
 # Prep contrast and jobs
-jobs, contrasts = prep_jobs_contrasts(adata_tmp, path_data, contrasts_name='paep_contrasts')
+jobs, contrasts = prep_jobs_contrasts(adata_sc, path_data, contrasts_name='paep_contrasts')
 
 # Here we go
-D = Dist_features(adata_tmp, contrasts, jobs=jobs)
+D = Dist_features(adata_sc, contrasts, jobs=jobs)
 D.select_genes()
 for k in D.jobs:
     for x in D.jobs[k]:
@@ -753,7 +639,6 @@ for cat in categories:
 
 all_degs= pd.concat(dfs)
 all_degs.to_csv(os.path.join(path_data, "Degs_regulon_scanpy_score.csv"))
-all_degs=pd.read_csv(os.path.join(path_data, "Degs_regulon_scanpy_score.csv"))
 
 promet=all_degs[all_degs['comparison']== 'promet_AC_vs_NT0_vs_promet_AC_vs_NT1']
 promet['effect_size']
@@ -779,7 +664,7 @@ all_degs['comparison'].unique()
 #         - GSEA results for the contrast
 #     """
 n_out=50
-collection='MSigDB_Hallmark_2020'
+collection='MSigDB_Hallmark_2020'    #MSigDB_Hallmark_2020
 contrast='promet_AC_vs_NT0_vs_promet_AC_vs_NT1'
 contrast_results = all_degs[all_degs['comparison'] == contrast]
 covariate='effect_size'
@@ -790,7 +675,7 @@ ranked_regulon_list = contrast_results[['regulon', covariate]].dropna()
 ranked_regulon_list = ranked_regulon_list.sort_values(covariate, ascending=False)  
 ranked_regulon_list = ranked_regulon_list.set_index('regulon')[covariate]
 
-# Perform GSEA using gseapy.prerank
+#Perform GSEA
 results = prerank(
     rnk=ranked_regulon_list,
     gene_sets=[collection],
@@ -806,21 +691,21 @@ results = prerank(
 df = results.res2d.loc[:, ['Term', 'ES', 'NES', 'FDR q-val','Lead_genes']].rename(columns={'FDR q-val': 'Adjusted P-value'})
 df['Term'] = df['Term'].map(lambda x: x.split('__')[1] if '__' in x else x)
 df = df.set_index('Term')
-df.to_csv(os.path.join(path_results,'Gsea_promet_AC_vs_nonpro_AC.csv'))
+df.to_csv(os.path.join(path_results,'Gsea_promet_AC_vs_pro_NT_hallmark.csv'))
 
 #Viz GSEA 
 fig, ax = plt.subplots(1, 1, figsize=(8, 5))
 
-stem_plot(
+plu.stem_plot(
     df[['ES', 'NES', 'Adjusted P-value']].sort_values('NES', ascending=False).head(25),
     'NES',
     ax=ax
 )
-format_ax(ax, title='GSEA', xlabel='NES')
+plu.format_ax(ax, title='GSEA', xlabel='NES')
 
 fig.suptitle(f'GSEA: Prometastatic AC vs Prometastatic NT')
 fig.tight_layout()
-fig.savefig(os.path.join(path_results,"gsea_Prometastatic_AC_vs_prometastatic_NT_hallmark'.png"),dpi=300)
+fig.savefig(os.path.join(path_results,"gsea_Prometastatic_AC_vs_prometastatic_NT_hallmark.png"),dpi=300)
 
 
 
@@ -857,9 +742,9 @@ def volcano_plot_plot(
     df_[evidence] = -np.log10(df_[evidence]+pseudocount)
 
     fig, ax = plt.subplots(figsize=figsize)
-    scatter(df_.query('type == "other"'), effect_size, evidence,  c='darkgrey', s=s, ax=ax)
-    scatter(df_.query('type == "up"'), effect_size, evidence,  c='red', s=s*2, ax=ax)
-    scatter(df_.query('type == "down"'), effect_size, evidence,  c='b', s=s*2, ax=ax)
+    plu.scatter(df_.query('type == "other"'), effect_size, evidence,  c='darkgrey', s=s, ax=ax)
+    plu.scatter(df_.query('type == "up"'), effect_size, evidence,  c='red', s=s*2, ax=ax)
+    plu.scatter(df_.query('type == "down"'), effect_size, evidence,  c='b', s=s*2, ax=ax)
 
     ax.set(xlim=xlim)
 
@@ -868,11 +753,11 @@ def volcano_plot_plot(
         ax.vlines(-1, df_[evidence].min(), df_[evidence].max(), colors='b')
         ax.hlines(-np.log10(0.1), xlim[0], xlim[1], colors='k')
 
-    format_ax(ax, title=title, xlabel=f'log2FC', ylabel=f'-log10(FDR)')
+    plu.format_ax(ax, title=title, xlabel=f'log2FC', ylabel=f'-log10(FDR)')
     ax.spines[['top', 'right']].set_visible(False)
 
     if annotate:
-        ta.allocate_text(
+        plu.ta.allocate_text(
             fig, ax, 
             df_.loc[lambda x: x['to_annotate']][effect_size],
             df_.loc[lambda x: x['to_annotate']][evidence],
@@ -929,10 +814,10 @@ for gene in thrb_genes:
 
 #violin plot of each gene of thrb regulon
 for gene in thrb_genes:
-    adata_mp.obs[f'{gene}_score'] = adata_mp[:, gene].X.toarray().flatten() 
+    adata_sc.obs[f'{gene}_score'] = adata[:, gene].X.toarray().flatten() 
     order= ['nonpro_NT', 'nonpro_AC', 'promet_NT','promet_AC']
-    adata_mp.obs['comparison'] = pd.Categorical(
-        adata_mp.obs['comparison'],
+    adata_sc.obs['comparison'] = pd.Categorical(
+        adata_sc.obs['comparison'],
         categories=order,
         ordered=True
     )
@@ -947,7 +832,7 @@ for gene in thrb_genes:
         ['nonpro_AC','promet_NT']
     ]
     violin(
-        df=adata_mp.obs,
+        df=adata_sc.obs,
         x='comparison',
         y=f'{gene}_score',
         ax=ax,
@@ -958,8 +843,8 @@ for gene in thrb_genes:
     )
 
     # Format the axis
-    format_ax(ax, title=f'{gene} scores', 
-            xticks=adata_mp.obs['comparison'].cat.categories, ylabel='Score',reduced_spines=True)
+    plu.format_ax(ax, title=f'{gene} scores', 
+            xticks=adata_sc.obs['comparison'].cat.categories, ylabel='Score',reduced_spines=True)
     ax.set_title(f'{gene} scores', fontsize=16, fontweight='bold')
     ax.set_xlabel('Condition', fontsize=14)
     ax.set_ylabel('Score', fontsize=14)
@@ -967,8 +852,6 @@ for gene in thrb_genes:
     ax.tick_params(axis='y', labelsize=12)
     fig.tight_layout()
     fig.savefig(os.path.join(path_results, f'{gene}_violin.png'), dpi=400)
-
-
 
 
 
