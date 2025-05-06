@@ -994,3 +994,24 @@ plu.strip(scores, x='condition', y='NES', ax=ax, color='k', x_order=order)
 plu.format_ax(ax=ax, title='Regulon activity in shPAEP vs shSCR', ylabel='NES', rotx=90, reduced_spines=True)
 fig.tight_layout()
 fig.savefig(os.path.join(path_results, f'Boxplot_shPAEP_regulon_act.png'), dpi=300)
+
+
+#mean gene_set expression x condition
+sub_bulk_matr= bulk_expr_mat.loc[bulk_expr_mat.index.intersection(d_paep)].T
+sub_bulk_matr['mean']= sub_bulk_matr.mean(axis=1)
+sub_bulk_matr['condition'] = sub_bulk_matr.index.to_series().map(sample_to_condition)
+
+#Viz
+fig, ax = plt.subplots(figsize=(4,4))
+order = ['PT_shPAEP','PT_shSCR']
+
+plu.box(
+    sub_bulk_matr, 
+    x='condition', y='mean', ax=ax, color='grey', add_stats=True, 
+    pairs=[['PT_shPAEP','PT_shSCR']], 
+    x_order=order
+)
+plu.strip(sub_bulk_matr, x='condition', y='mean', ax=ax, color='k', x_order=order)
+plu.format_ax(ax=ax, title='Mean expression of regulon genes in shPAEP vs shSCR', ylabel='NES', rotx=90, reduced_spines=True)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, f'Boxplot_shPAEP_regulon_mean_expr.png'), dpi=300)
