@@ -8,9 +8,11 @@ import zlib
 import json
 import umap
 import matplotlib.axes
+from gseapy import ssgsea
 import textalloc as ta
 from typing import Dict, Iterable, Any, Tuple
 from matplotlib.lines import Line2D 
+from scipy.cluster.hierarchy import leaves_list, linkage
 import anndata as ad
 import pandas as pd
 import scanpy as sc
@@ -399,7 +401,7 @@ adata_auc_thrb.var.drop('THRB', inplace=True)
 adata_mp=adata.copy()
 adata_mp.obs['THRB_score'] = adata_sc[:,"THRB"].X.toarray().flatten()
 adata_mp.obs['comparison']= adata_auc_thrb.obs['comparison']
-regulon_to_plot=['THRB_score_promet_NT']
+regulon_to_plot=['THRB_score']
 adata_mp.obs['promet_NT'] = adata_mp.obs['comparison'].apply(lambda x: x if x == 'promet_NT' else np.nan)
 adata_mp.obs['THRB_score_promet_NT'] = adata_mp.obs.apply(
     lambda row: row['THRB_score'] if pd.notnull(row['promet_NT']) else np.nan,
@@ -414,10 +416,9 @@ plt.close()
 
 plt.figure(figsize=(6, 6))  
 sc.pl.umap(adata_mp, color=regulon_to_plot, cmap='viridis', vmin=0, show=False)
-plt.savefig(os.path.join(path_results,"umap_THRB_promet_NT.png"), dpi=300, bbox_inches='tight')
+plt.show()
+plt.savefig(os.path.join(path_results,"umap_THRB.png"), dpi=300, bbox_inches='tight')
 plt.close()
-
-
 
 
 
@@ -874,24 +875,122 @@ motif_paep = reg_paep['THRB(+)']['motif_data']
 
 
 
-#boxplot sh conditions with PCA activity score for THRB
-df_activity= pd.read_csv(os.path.join(path_results,"thrb_genes_expression_bulk.csv"),index_col=0)
 
-fig, ax = plt.subplots(figsize=(4,4))
-order = ['shSCR', 'shPAEP']
-box(
-    df_activity, 
-    x='Condition', y='ActivityScore', ax=ax, c='grey', with_stats=True, 
-    pairs=[['shSCR', 'shPAEP']], 
-    order=order
+
+#umap all regulons
+regulons_to_plot = adata_sc.var_names.tolist()  
+for reg in regulons_to_plot:
+    adata_mp.obs[f'{reg}_score'] = adata_mp[:,reg].X.toarray().flatten()
+
+#Viz
+plt.figure(figsize=(6, 6))  
+sc.pl.umap(
+    adata_mp,
+    color=regulons_to_plot[7:14], 
+    cmap='viridis',
+    ncols=3
 )
-strip(df_activity, 
-    x='Condition', y='ActivityScore', ax=ax, c='k', order=order)
-format_ax(ax=ax, title='n clones', ylabel='n', rotx=90)
-fig.tight_layout()
-fig.savefig(os.path.join(path_results, f'thrb_activity_shPAEP.png'), dpi=300)
-
-
-
+plt.show()
+plt.savefig(os.path.join(path_results,"umap_comparison_regulons_all.png"), dpi=300, bbox_inches='tight')
 
      
+#heatmap of regulon activity in contrasts
+adata_sc.X = adata_sc.X.toarray()
+df_ =pd.DataFrame(adata_sc.X, columns= adata_sc.var_names, index=adata_sc.obs_names)
+df_['comparison']= adata_auc_thrb.obs['comparison']
+mean_act=df_.groupby('comparison').mean().T
+reg_diff = mean_act.max(axis=1) - mean_act.min(axis=1)
+selected_reg= reg_diff[reg_diff >= 0.7]
+mean_act=mean_act.loc[selected_reg.index]
+order=['nonpro_NT','nonpro_AC','promet_NT','promet_AC']
+mean_act=mean_act[order]
+plt.figure(figsize=(10,12))
+plu.plot_heatmap(mean_act, vmin=-1, vmax=0.75)
+plt.tight_layout()
+plt.savefig(os.path.join(path_results,"heatmap_regulons_activity.png"), dpi=300, bbox_inches='tight')
+
+
+#Jaccard similarity regulons (gene overlap)
+d_reg['gene_set']= d_reg['gene_set'].apply(lambda x: set(x.split(',')))
+d_reg['regulon']= d_reg['regulon'].str.replace('(+)', '', regex=False)
+d_reg= d_reg[d_reg['regulon'].isin(selected_reg.index)]
+
+def jaccardindex(set1,set2):
+    intersection_size=len(set1 & set2)
+    union_size= len(set1|set2)
+    return intersection_size/union_size if union_size !=0 else 0
+
+JI_matrix={}
+
+for i, row_i in d_reg.iterrows():
+    for j , row_j in d_reg.iterrows():
+        if i >= j:
+            continue
+        regulon_i = row_i['regulon']
+        regulon_j = row_j['regulon']
+        gene_set_i = row_i['gene_set']
+        gene_set_j = row_j['gene_set']
+
+        JI= jaccardindex(gene_set_i, gene_set_j)
+        JI_matrix[(regulon_i , regulon_j)] = JI
+        JI_matrix[(regulon_j , regulon_i)] = JI
+
+reg= d_reg['regulon'].values
+JI_df= pd.DataFrame(np.zeros((len(reg), len(reg))), columns=reg, index=reg)
+
+for (reg_a, reg_b), sim in JI_matrix.items():
+    JI_df.loc[reg_a, reg_b] = sim
+    JI_df.loc[reg_b, reg_a] = sim 
+
+np.fill_diagonal(JI_df.values, 1)
+
+order_clustering= leaves_list(linkage(JI_df.values,method='average'))
+ordered_JI = JI_df.values[np.ix_(order_clustering, order_clustering)]
+ordered_regulons = JI_df.index[order_clustering]
+ordered_JI_df = JI_df.loc[ordered_regulons, ordered_regulons]
+ordered_JI_df = pd.DataFrame(ordered_JI, index=JI_df.index[order_clustering], columns=JI_df.columns[order_clustering])
+vmin, vmax= 0, 0.3
+fig, ax = plt.subplots(figsize=(13, 13))
+plu.plot_heatmap(ordered_JI_df, palette='mako', ax=ax,
+                 x_names=ordered_regulons, y_names=ordered_regulons, annot=True, 
+                 annot_size=8, label='Jaccard Index', shrink=1, cb=False)
+sns.heatmap(ordered_JI_df, ax=ax, xticklabels=ordered_regulons, yticklabels=ordered_regulons,
+                        robust=True, cmap="mako", vmin=vmin, vmax=vmax, fmt='.2f',cbar_kws={'fraction':0.05, 'aspect':35, 'pad': 0.02})
+fig.tight_layout()
+plt.savefig(os.path.join(path_results,"Jaccard_regulons_activity.png"), dpi=500, bbox_inches='tight')
+
+
+#rna-seq enrichment analysis
+bulk_expr_mat=pd.read_csv(os.path.join(path_data,'bulk_expr_matr.csv'),index_col=0)
+
+sample_to_condition = {
+    'PT_shSCR_1': 'PT_shSCR', 'PT_shSCR_2': 'PT_shSCR', 'PT_shSCR_3': 'PT_shSCR',
+    'PT_shSCR_4': 'PT_shSCR', 'PT_shSCR_5': 'PT_shSCR',
+    'PT_shPAEP1_1': 'PT_shPAEP', 'PT_shPAEP1_2': 'PT_shPAEP', 'PT_shPAEP1_3': 'PT_shPAEP',
+    'PT_shPAEP1_4': 'PT_shPAEP', 'PT_shPAEP1_5': 'PT_shPAEP',
+    'PT_shPAEP2_3': 'PT_shPAEP', 'PT_shPAEP2_4': 'PT_shPAEP'
+}
+
+d_paep=d_reg['THRB(+)']['gene_set']
+gene_set={'regulon': d_paep}
+
+#Run ssgsea
+results = ssgsea(data=bulk_expr_mat, gene_sets=gene_set,
+                 outdir=None, permutation_num=0, no_plot=True)
+scores = results.res2d.set_index('Name')
+scores['condition'] = scores.index.to_series().map(sample_to_condition)
+
+#Viz
+fig, ax = plt.subplots(figsize=(4,4))
+order = ['PT_shPAEP','PT_shSCR']
+scores["NES"] = pd.to_numeric(scores["NES"], errors="coerce")
+plu.box(
+    scores, 
+    x='condition', y='NES', ax=ax, color='grey', add_stats=True, 
+    pairs=[['PT_shPAEP','PT_shSCR']], 
+    x_order=order
+)
+plu.strip(scores, x='condition', y='NES', ax=ax, color='k', x_order=order)
+plu.format_ax(ax=ax, title='Regulon activity in shPAEP vs shSCR', ylabel='NES', rotx=90, reduced_spines=True)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, f'Boxplot_shPAEP_regulon_act.png'), dpi=300)
