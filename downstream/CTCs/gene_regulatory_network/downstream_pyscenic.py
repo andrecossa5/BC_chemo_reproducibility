@@ -25,6 +25,8 @@ from Cellula.dist_features._dist_features import *
 from Cellula.dist_features._Dist import *
 from Cellula.dist_features._Gene_set import *
 from Cellula.dist_features._signatures import scanpy_score, wot_zscore
+from Cellula.preprocessing._neighbors import *
+from Cellula.clustering._clustering import *
 from matplotlib.gridspec import GridSpec
 from plotting_utils import plotting_base
 import plotting_utils as plu
@@ -78,6 +80,7 @@ adata_sc = sc.read(os.path.join(path_data,"clustered_scanpy_no_norm.h5ad"))
 # adata_sc.obs['comparison'] = adata_auc_thrb.obs['comparison']
 # adata_sc.write(os.path.join(path_data, "clustered_norm.h5ad"))
 adata_sc=sc.read(os.path.join(path_data, "clustered_norm.h5ad"))
+adata_sc.obs.drop('THRB_score', axis=1)
 all_degs=pd.read_csv(os.path.join(path_data, "Degs_regulon_scanpy_score.csv"))
 
 
@@ -541,11 +544,12 @@ pairs = [
     ['promet_AC', 'nonpro_AC'],
     ['promet_AC', 'promet_NT'],
     ['nonpro_AC', 'nonpro_NT'],
-    ['nonpro_AC','promet_NT']
+    ['nonpro_AC','promet_NT'],
+    ['nonpro_NT','promet_AC']
 ]
 order= ['nonpro_NT', 'nonpro_AC', 'promet_NT','promet_AC']
 violin(
-    df=adata.obs,
+    df=adata_sc.obs,
     x='comparison',
     y='THRB_score',
     ax=ax,
@@ -555,8 +559,8 @@ violin(
 )
 
 # Format the axis
-format_ax(ax, title='THRB scores', 
-          xticks=adata.obs['comparison'].cat.categories, ylabel='Score',reduced_spines=True)
+plu.format_ax(ax, title='THRB scores', 
+          xticks=adata_sc.obs['comparison'].cat.categories, ylabel='Score',reduced_spines=True)
 ax.set_title('THRB scores', fontsize=16, fontweight='bold')
 ax.set_xlabel('Condition', fontsize=14)
 ax.set_ylabel('Score', fontsize=14)
@@ -564,7 +568,7 @@ ax.tick_params(axis='x', labelsize=12)
 ax.tick_params(axis='y', labelsize=12)
 fig.tight_layout()
 plt.show()
-fig.savefig(os.path.join(path_results, 'THRB_violin_scanpyscores_normalized.png'), dpi=400)
+fig.savefig(os.path.join(path_results, 'THRB_violin_scanpyscores_normalized_all_tests.png'), dpi=400)
 
 
 #volcano plot
@@ -664,9 +668,10 @@ all_degs['comparison'].unique()
 #     Returns:
 #         - GSEA results for the contrast
 #     """
+all_degs['comparison'].unique()
 n_out=50
-collection='MSigDB_Hallmark_2020'    #MSigDB_Hallmark_2020
-contrast='promet_AC_vs_NT0_vs_promet_AC_vs_NT1'
+collection='GO_Biological_Process_2023'    #MSigDB_Hallmark_2020
+contrast='promet_AC0_vs_promet_AC1'
 contrast_results = all_degs[all_degs['comparison'] == contrast]
 covariate='effect_size'
 #if covariate not in contrast_results.columns:
@@ -692,26 +697,21 @@ results = prerank(
 df = results.res2d.loc[:, ['Term', 'ES', 'NES', 'FDR q-val','Lead_genes']].rename(columns={'FDR q-val': 'Adjusted P-value'})
 df['Term'] = df['Term'].map(lambda x: x.split('__')[1] if '__' in x else x)
 df = df.set_index('Term')
-df.to_csv(os.path.join(path_results,'Gsea_promet_AC_vs_pro_NT_hallmark.csv'))
+df.to_excel(os.path.join(path_results,'Gsea_promet_AC_vs_nonpromet_AC_GO.xlsx'))
 
 #Viz GSEA 
 fig, ax = plt.subplots(1, 1, figsize=(8, 5))
 
 plu.stem_plot(
-    df[['ES', 'NES', 'Adjusted P-value']].sort_values('NES', ascending=False).head(25),
+    df[df['Adjusted P-value'] < 0.1][['ES', 'NES', 'Adjusted P-value']].sort_values('NES', ascending=False).head(25),
     'NES',
     ax=ax
 )
-plu.format_ax(ax, title='GSEA', xlabel='NES')
+plu.format_ax(ax, xlabel='NES')
 
-fig.suptitle(f'GSEA: Prometastatic AC vs Prometastatic NT')
+fig.suptitle(f'GSEA: Prometastatic AC vs non-Prometastatic AC')
 fig.tight_layout()
-fig.savefig(os.path.join(path_results,"gsea_Prometastatic_AC_vs_prometastatic_NT_hallmark.png"),dpi=300)
-
-
-
-
-
+fig.savefig(os.path.join(path_results,"gsea_Prometastatic_AC_vs_nonprometastatic_AC_GO_filtered.png"),dpi=300)
 
 
 
@@ -787,7 +787,7 @@ fig.savefig(os.path.join(path_results,"volcano_scanpy_score_norm_prometNT_vs_non
 
 
 #thrb genes
-thrb_genes = reg_paep['THRB(+)']['gene_set']
+thrb_genes = d_reg['THRB(+)']['gene_set']
 
 #umap single genes
 adata_mp=adata.copy()
@@ -814,7 +814,8 @@ for gene in thrb_genes:
         gene_means[gene] = mean_values
 
 #violin plot of each gene of thrb regulon
-for gene in thrb_genes:
+#for gene in thrb_genes:
+    gene=['ANKS1A']
     adata_sc.obs[f'{gene}_score'] = adata[:, gene].X.toarray().flatten() 
     order= ['nonpro_NT', 'nonpro_AC', 'promet_NT','promet_AC']
     adata_sc.obs['comparison'] = pd.Categorical(
@@ -844,15 +845,15 @@ for gene in thrb_genes:
     )
 
     # Format the axis
-    plu.format_ax(ax, title=f'{gene} scores', 
+    plu.format_ax(ax, title=f'{gene} expression', 
             xticks=adata_sc.obs['comparison'].cat.categories, ylabel='Score',reduced_spines=True)
-    ax.set_title(f'{gene} scores', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Condition', fontsize=14)
-    ax.set_ylabel('Score', fontsize=14)
-    ax.tick_params(axis='x', labelsize=12)
-    ax.tick_params(axis='y', labelsize=12)
+    ax.set_title(f'{gene} expression', fontsize=18, fontweight='bold')
+    ax.set_xlabel('Condition', fontsize=16)
+    ax.set_ylabel('Expression', fontsize=16)
+    ax.tick_params(axis='x', labelsize=16)
+    ax.tick_params(axis='y', labelsize=16)
     fig.tight_layout()
-    fig.savefig(os.path.join(path_results, f'{gene}_violin.png'), dpi=400)
+    fig.savefig(os.path.join(path_results,f'{gene}_violin.png'), dpi=400)
 
 
 
@@ -899,13 +900,14 @@ adata_sc.X = adata_sc.X.toarray()
 df_ =pd.DataFrame(adata_sc.X, columns= adata_sc.var_names, index=adata_sc.obs_names)
 df_['comparison']= adata_auc_thrb.obs['comparison']
 mean_act=df_.groupby('comparison').mean().T
+mean_act.loc['THRB']
 reg_diff = mean_act.max(axis=1) - mean_act.min(axis=1)
 selected_reg= reg_diff[reg_diff >= 0.7]
 mean_act=mean_act.loc[selected_reg.index]
 order=['nonpro_NT','nonpro_AC','promet_NT','promet_AC']
 mean_act=mean_act[order]
 plt.figure(figsize=(10,12))
-plu.plot_heatmap(mean_act, vmin=-1, vmax=0.75)
+plu.plot_heatmap(mean_act, vmin=-1, vmax=0.75, x_names_size=16, y_names_size=14)
 plt.tight_layout()
 plt.savefig(os.path.join(path_results,"heatmap_regulons_activity.png"), dpi=300, bbox_inches='tight')
 
@@ -960,7 +962,7 @@ fig.tight_layout()
 plt.savefig(os.path.join(path_results,"Jaccard_regulons_activity.png"), dpi=500, bbox_inches='tight')
 
 
-#rna-seq enrichment analysis
+#rna-seq enrichment analysis (bulk)
 bulk_expr_mat=pd.read_csv(os.path.join(path_data,'bulk_expr_matr.csv'),index_col=0)
 
 sample_to_condition = {
@@ -974,7 +976,7 @@ sample_to_condition = {
 d_paep=d_reg['THRB(+)']['gene_set']
 gene_set={'regulon': d_paep}
 
-#Run ssgsea
+#Run ssgsea (bulk)
 results = ssgsea(data=bulk_expr_mat, gene_sets=gene_set,
                  outdir=None, permutation_num=0, no_plot=True)
 scores = results.res2d.set_index('Name')
@@ -996,13 +998,16 @@ fig.tight_layout()
 fig.savefig(os.path.join(path_results, f'Boxplot_shPAEP_regulon_act.png'), dpi=300)
 
 
-#mean gene_set expression x condition
+#mean gene_set expression x condition (bulk)
+#no PAEP and each gene of the regulon
+d_paep=d_paep.remove('PAEP')
 sub_bulk_matr= bulk_expr_mat.loc[bulk_expr_mat.index.intersection(d_paep)].T
+sub_bulk_matr.columns
 sub_bulk_matr['mean']= sub_bulk_matr.mean(axis=1)
 sub_bulk_matr['condition'] = sub_bulk_matr.index.to_series().map(sample_to_condition)
 
 #Viz
-fig, ax = plt.subplots(figsize=(4,4))
+fig, ax = plt.subplots(figsize=(5.3,5))
 order = ['PT_shPAEP','PT_shSCR']
 
 plu.box(
@@ -1012,6 +1017,30 @@ plu.box(
     x_order=order
 )
 plu.strip(sub_bulk_matr, x='condition', y='mean', ax=ax, color='k', x_order=order)
-plu.format_ax(ax=ax, title='Mean expression of regulon genes in shPAEP vs shSCR', ylabel='NES', rotx=90, reduced_spines=True)
+plu.format_ax(ax=ax, title='Mean expression of regulon genes in shPAEP vs shSCR', ylabel='mean', rotx=90, reduced_spines=True)
 fig.tight_layout()
 fig.savefig(os.path.join(path_results, f'Boxplot_shPAEP_regulon_mean_expr.png'), dpi=300)
+
+#single gene (vers)
+d_paep.remove("RAB33A")
+for gene in d_paep:
+    sub_bulk_matr= bulk_expr_mat.loc[[gene]].T
+    sub_bulk_matr.columns = ['expression']
+    sub_bulk_matr['condition'] = sub_bulk_matr.index.to_series().map(sample_to_condition)
+
+    #Viz
+    fig, ax = plt.subplots(figsize=(4,4))
+    order = ['PT_shPAEP','PT_shSCR']
+
+    plu.box(
+        sub_bulk_matr, 
+        x='condition', y='expression', ax=ax, color='grey', add_stats=True, 
+        pairs=[['PT_shPAEP','PT_shSCR']], 
+        x_order=order
+    )
+    plu.strip(sub_bulk_matr, x='condition', y='expression', ax=ax, color='k', x_order=order)
+    plu.format_ax(ax=ax, title=f'{gene}: Expression in shPAEP vs shSCR', ylabel='expression', rotx=90, reduced_spines=True)
+    fig.tight_layout()
+    fig.savefig(os.path.join(path_results, f'Boxplot_shPAEP_regulon_mean_expr_{gene}.png'), dpi=300)
+
+
