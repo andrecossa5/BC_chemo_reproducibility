@@ -154,7 +154,7 @@ plt.savefig(os.path.join(path_results, "distribution_aucell.png"),dpi=300)
 plt.show()
 
 
-#stats ptx
+#stats for ptx
 auc_mtx
 gene_counts = [len(d_reg[key]['gene_set']) for key in d_reg]
 mean_gene_count = sum(gene_counts) / len(gene_counts)
@@ -866,7 +866,8 @@ origin_hmga1.to_csv(os.path.join(path_results,"hmga1_origin.csv"), index=False)
 origin_thrb.to_csv(os.path.join(path_results,"thrb_origin.csv"), index=False)
 origin_thrb= pd.read_csv(os.path.join(path_results,"thrb_origin.csv"))
 
-df_= score_df_500[score_df_500['motifs']== 'tfdimers__MD00459']
+df_= score_df_10[score_df_10['motifs']== 'tfdimers__MD00459']
+df_['PAEP']
 targets_values = regulons[['TF','TargetGenes']]
 target_values_thrb= targets_values[targets_values['TF']== 'THRB']
 
@@ -1044,3 +1045,4 @@ for gene in d_paep:
     fig.savefig(os.path.join(path_results, f'Boxplot_shPAEP_regulon_mean_expr_{gene}.png'), dpi=300)
 
 
+#senescence signatures 
