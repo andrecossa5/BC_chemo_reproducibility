@@ -35,11 +35,12 @@ dna_d = pd.read_csv(os.path.join(path_data,"DNA_damage.txt"))
 inf_ss = pd.read_csv(os.path.join(path_data,"inflammatory_stress.txt"))
 met_ss = pd.read_csv(os.path.join(path_data,"Metabolic_stress.txt"))
 mit_ss = pd.read_csv(os.path.join(path_data,"Mitotic_stress.txt"))
+ox_ss = pd.read_csv(os.path.join(path_data,"Oxidative_stress.txt"))
+pt_ss = pd.read_csv(os.path.join(path_data,"proteotoxic_stress.txt"))
 promet_vs_nonpromet_NT = pd.read_csv(os.path.join(path_data,"promet_vs_nonpromet_NT_formatted.csv"))
 promet_vs_nonpromet_AC = pd.read_csv(os.path.join(path_data,"promet_vs_nonpromet_AC_formatted.csv"))
 adata= sc.read_h5ad(os.path.join(path_adata, "clustered.h5ad"))
 adata_sc=sc.read(os.path.join(path_adata, "clustered_norm.h5ad"))
-adata_ctc= sc.read(os.path.join("/Users/ieo7295/Desktop/tests/cell/data/default/clustered.h5ad"))
 
 #add condition column to adata
 adata.obs['comparison'] = adata_sc.obs['comparison']
@@ -63,7 +64,7 @@ order = ['nonpro_NT','nonpro_AC','promet_NT','promet_AC']
 plu.box(df_bulk,
     x='comparison', y='mean_expr', ax=ax, color='grey', add_stats=True, 
     pairs=[['promet_NT','nonpro_AC'],['promet_NT','promet_AC'],['nonpro_AC','promet_AC'],['nonpro_NT','promet_AC'],
-           ['nonpro_NT','nonpro_AC']], 
+           ['nonpro_NT','nonpro_AC'], ['nonpro_NT','promet_NT']], 
     x_order=order
 )
 plu.strip(df_bulk, x='comparison', y='mean_expr', ax=ax, color='k', x_order=order)
@@ -97,6 +98,60 @@ plu.strip(df_bulk, x='comparison', y='hypo_mean_expr', ax=ax, color='k', x_order
 plu.format_ax(ax=ax, title='Mean expression of 13 hypoxia genes', ylabel='mean', rotx=90, reduced_spines=True)
 fig.tight_layout()
 fig.savefig(os.path.join(path_results, f'Boxplot_13_hypoxia_sample.png'), dpi=300)
+
+
+#11 glycolysis in common 
+gl_cmm_genes= ['SLC16A3', 'ENO1','ENO2','GAPDH','LDHA','PFKL','PFKP','PGK1','PKM','TPI1','CITED2']
+
+gl_cmm_11= [x for x in gl_cmm_genes if x in adata.var_names]
+gl_cmm_11 = list(set(gl_cmm_11))
+adata_gl_cmm_11 = adata[:, gl_cmm_11].copy()
+
+adata_gl_cmm_11.obs['mean_expr'] = adata_gl_cmm_11.X.mean(axis=1).A1 
+
+df = adata_gl_cmm_11.obs[['mean_expr', 'sample', 'comparison']].copy()
+df_bulk = df.groupby(['sample', 'comparison'])['mean_expr'].mean().reset_index()
+
+fig, ax = plt.subplots(figsize=(5.3,5))
+order = ['promet_NT','nonpro_AC','promet_AC']
+
+plu.box(df_bulk,
+    x='comparison', y='mean_expr', ax=ax, color='grey', add_stats=True, 
+    pairs=[['promet_NT','nonpro_AC'],['promet_NT','promet_AC'],['nonpro_AC','promet_AC']], 
+    x_order=order
+)
+plu.strip(df_bulk, x='comparison', y='mean_expr', ax=ax, color='k', x_order=order)
+plu.format_ax(ax=ax, title='Mean expression of 11 glycolysis common genes', ylabel='mean', rotx=90, reduced_spines=True)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, f'Boxplot_11_glycolysis_sample.png'), dpi=300)
+
+
+#35 glycolysis in common 
+gl_cmm_genes= ['SLC16A3', 'ENO1','ENO2','GAPDH','LDHA','PFKL','PFKP','PGK1','PKM','TPI1','CITED2']
+
+gl_cmm_11= [x for x in gl_cmm_genes if x in adata.var_names]
+gl_cmm_11 = list(set(gl_cmm_11))
+adata_gl_cmm_11 = adata[:, gl_cmm_11].copy()
+
+adata_gl_cmm_11.obs['mean_expr'] = adata_gl_cmm_11.X.mean(axis=1).A1 
+
+df = adata_gl_cmm_11.obs[['mean_expr', 'sample', 'comparison']].copy()
+df_bulk = df.groupby(['sample', 'comparison'])['mean_expr'].mean().reset_index()
+
+fig, ax = plt.subplots(figsize=(5.3,5))
+order = ['promet_NT','nonpro_AC','promet_AC']
+
+plu.box(df_bulk,
+    x='comparison', y='mean_expr', ax=ax, color='grey', add_stats=True, 
+    pairs=[['promet_NT','nonpro_AC'],['promet_NT','promet_AC'],['nonpro_AC','promet_AC']], 
+    x_order=order
+)
+plu.strip(df_bulk, x='comparison', y='mean_expr', ax=ax, color='k', x_order=order)
+plu.format_ax(ax=ax, title='Mean expression of 11 glycolysis common genes', ylabel='mean', rotx=90, reduced_spines=True)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, f'Boxplot_11_glycolysis_sample.png'), dpi=300)
+
+
 
 #134
 hp_genes = hp['Genes'].tolist()
@@ -386,11 +441,83 @@ plu.format_ax(ax=ax, title='Mean expression of 24 Mitotic stress genes', ylabel=
 fig.tight_layout()
 fig.savefig(os.path.join(path_results, f'Boxplot_24_mitotic_stress_sample.png'), dpi=300)
 
+#stress: nutrient 
+nut_genes = ['SLC38A1','SLC7A1','EIF4EBP1','LAMTOR5']
 
+nut_4= [x for x in nut_genes if x in adata.var_names]
+nut_4= list(set(nut_4))
+adata_nut_4 = adata[:, nut_4].copy()
 
+adata_nut_4.obs['mean_expr'] = adata_nut_4.X.mean(axis=1).A1 
 
+df = adata_nut_4.obs[['mean_expr', 'sample', 'comparison']].copy()
+df_bulk = df.groupby(['sample','comparison'])['mean_expr'].mean().reset_index()
 
+fig, ax = plt.subplots(figsize=(7.2,5))
+order = ['nonpro_NT','nonpro_AC','promet_NT','promet_AC']
 
+plu.box(df_bulk,
+    x='comparison', y='mean_expr', ax=ax, color='grey', add_stats=True, 
+    pairs=[['promet_NT','nonpro_AC'],['promet_NT','promet_AC'],['nonpro_AC','promet_AC'],['nonpro_NT','promet_NT'],['nonpro_NT','promet_AC'],
+           ['nonpro_NT','nonpro_AC']], 
+    x_order=order
+)
+plu.strip(df_bulk, x='comparison', y='mean_expr', ax=ax, color='k', x_order=order)
+plu.format_ax(ax=ax, title='Mean expression of 4 Nutrient stress genes', ylabel='mean', rotx=90, reduced_spines=True)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, f'Boxplot_4_nutrient_stress_sample.png'), dpi=300)
+
+#stress: oxidative 
+ox_ss_genes = ox_ss['Gene'].tolist()
+
+ox_ss_35= [x for x in ox_ss_genes if x in adata.var_names]
+ox_ss_35= list(set(ox_ss_35))
+adata_ox_ss_35 = adata[:, ox_ss_35].copy()
+
+adata_ox_ss_35.obs['mean_expr'] = adata_ox_ss_35.X.mean(axis=1).A1 
+
+df = adata_ox_ss_35.obs[['mean_expr', 'sample', 'comparison']].copy()
+df_bulk = df.groupby(['sample','comparison'])['mean_expr'].mean().reset_index()
+
+fig, ax = plt.subplots(figsize=(7.2,5))
+order = ['nonpro_NT','nonpro_AC','promet_NT','promet_AC']
+
+plu.box(df_bulk,
+    x='comparison', y='mean_expr', ax=ax, color='grey', add_stats=True, 
+    pairs=[['promet_NT','nonpro_AC'],['promet_NT','promet_AC'],['nonpro_AC','promet_AC'],['nonpro_NT','promet_NT'],['nonpro_NT','promet_AC'],
+           ['nonpro_NT','nonpro_AC']], 
+    x_order=order
+)
+plu.strip(df_bulk, x='comparison', y='mean_expr', ax=ax, color='k', x_order=order)
+plu.format_ax(ax=ax, title='Mean expression of 35 Oxidative stress genes', ylabel='mean', rotx=90, reduced_spines=True)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, f'Boxplot_35_oxidative_stress_sample.png'), dpi=300)
+
+#Proteotoxic stress: 
+pt_ss_genes = pt_ss['Gene'].tolist()
+
+pt_ss_26= [x for x in pt_ss_genes if x in adata.var_names]
+pt_ss_26= list(set(pt_ss_26))
+adata_pt_ss_26 = adata[:, pt_ss_26].copy()
+
+adata_pt_ss_26.obs['mean_expr'] = adata_pt_ss_26.X.mean(axis=1).A1 
+
+df = adata_pt_ss_26.obs[['mean_expr', 'sample', 'comparison']].copy()
+df_bulk = df.groupby(['sample','comparison'])['mean_expr'].mean().reset_index()
+
+fig, ax = plt.subplots(figsize=(7.2,5))
+order = ['nonpro_NT','nonpro_AC','promet_NT','promet_AC']
+
+plu.box(df_bulk,
+    x='comparison', y='mean_expr', ax=ax, color='grey', add_stats=True, 
+    pairs=[['promet_NT','nonpro_AC'],['promet_NT','promet_AC'],['nonpro_AC','promet_AC'],['nonpro_NT','promet_NT'],['nonpro_NT','promet_AC'],
+           ['nonpro_NT','nonpro_AC']], 
+    x_order=order
+)
+plu.strip(df_bulk, x='comparison', y='mean_expr', ax=ax, color='k', x_order=order)
+plu.format_ax(ax=ax, title='Mean expression of 26 Proteotoxic stress genes', ylabel='mean', rotx=90, reduced_spines=True)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results, f'Boxplot_26_proteotoxic_stress_sample.png'), dpi=300)
 
 
 def violin(
