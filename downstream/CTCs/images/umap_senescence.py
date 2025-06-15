@@ -242,7 +242,7 @@ sc.pl.umap(
     cmap='viridis',
     vmax=2,
     ax=axs[1],
-    show=False,
+    show=True,
     title='PAEP Expression'
 )
 
@@ -320,3 +320,27 @@ plt.title('PAEP vs reactome')
 plt.grid(True)
 plt.tight_layout()
 plt.savefig(os.path.join(path_results, 'scatter-mayonon_paep'), dpi=300)
+
+
+#hUSI scoring
+import sys
+sys.path.append('/Users/ieo7295/Desktop/HUSI')
+from sc.hUSI import cal_hUSI, SSE_hUSI, GMM_hUSI
+
+import scanpy as sc
+import matplotlib.colors as clr
+hUSI = cal_hUSI(adata)
+adata.obs['hUSI'] = hUSI
+sc.pp.highly_variable_genes(adata,n_top_genes=2000)
+adata.raw = adata.copy()
+adata = adata[:,adata.var.highly_variable]
+sc.pp.pca(adata,n_comps=15)
+sc.pp.neighbors(adata)
+sc.tl.tsne(adata)
+color_self = clr.LinearSegmentedColormap.from_list('pink_grey', ['#3AB370',"#EAE7CC","#FD1593"], N=256)
+sc.pl.tsne(adata,color='hUSI',save='Python_demo_hUSI.png',size=30,cmap = color_self)
+
+
+SenClass = SSE_hUSI(hUSI)
+
+SenClass = GMM_hUSI(hUSI)
