@@ -1,5 +1,5 @@
 """
-Script to analyze pyscenic results
+Script to analyze pyscenic results MDA
 """
 
 import os
@@ -172,9 +172,8 @@ if sparse.issparse(Z):
 
 X_zscored= (Z - Z.mean(axis=0))/ Z.std(axis=0)
 
-adata_auc.Z = csr_matrix(X_zscored)
-
-X_dense= adata_auc.Z.toarray()
+adata_auc.X = csr_matrix(X_zscored)
+X_dense= adata_auc.X.toarray()
 
 plt.figure(figsize=(8,5))
 plt.hist(X_dense.flatten(), bins=50, color='steelblue', edgecolor= 'k')
@@ -617,7 +616,7 @@ if isinstance(T, np.ndarray):
 if adata_sc.X.dtype != 'float32':
     adata_sc.X = adata_sc.X.astype('float32')
 
-
+adata_sc
 ## DE ##
 
 # Prep contrast and jobs
