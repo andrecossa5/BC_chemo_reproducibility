@@ -209,7 +209,7 @@ if sparse.issparse(Z):
 X_zscored= (Z - Z.mean(axis=0))/ Z.std(axis=0)
 
 adata_sc.X = csr_matrix(X_zscored)
-adata_sc.write_h5ad(os.path.join(path_data,'clustered_norm.h5ad'))
+#adata_sc.write_h5ad(os.path.join(path_data,'clustered_norm.h5ad'))
 X_dense= adata_sc.X.toarray()
 
 plt.figure(figsize=(8,5))
@@ -278,8 +278,232 @@ for cat in categories:
 all_degs= pd.concat(dfs)
 all_degs.to_csv(os.path.join(path_data, 'PT_CTC_DEGs.csv'))
 
-promet=all_degs[all_degs['comparison']== 'promet_AC_vs_NT0_vs_promet_AC_vs_NT1']
-promet['effect_size']
-promet.to_csv(os.path.join(path_results,'DEgs_promet_AC_vs_promet_NT.csv'))
+#list TF of interest
+tf_list = ["MYC","HIF1A","SREBF1", "SREBF2", "SREBP1","SREBP2","MLXIPL", 
+           "CHREBP","PPARA","PPARD","PPARG","PPARB","TFAM","ATF4","FOXO1","TP53",
+           "PTEN","MTOR", "MTORC1","HNF4A","HIF1","MTOR1"]
+present_tf = [tf for tf in tf_list if tf in adata_sc.var_names]
+
+
+#volcano plot 
+def get_genes_to_annotate_plot(df_, evidence, effect_size, n):
+    df_ = df_[(df_['type'] != 'other')].copy()  
+    df_['score'] = np.abs(df_[effect_size]) * df_[evidence]  
+    return df_.sort_values('score', ascending=False).head(n).index.tolist()
+
+
+def volcano_plot_plot(
+    df, effect_size='effect_size', evidence='evidence',
+    t_logFC=1, t_FDR=.1, n=10, title=None, xlim=(-8,8), max_distance=0.5, pseudocount=0,
+    figsize=(5,5), annotate=False, s=5, lines=False
+    ):
+    """
+    Volcano plot
+    """    
+
+    df_ = df.copy()    
+    choices = [
+        (df_[effect_size] >= t_logFC) & (df_[evidence] <= t_FDR),
+        (df_[effect_size] <= -t_logFC) & (df_[evidence] <= t_FDR),
+    ]
+    df_['type'] = np.select(choices, ['up', 'down'], default='other')
+    df_['is_present_tf'] = df_.index.isin(present_tf)
+    df_['is_significant_tf'] = (
+    df_['is_present_tf'] & 
+    (np.abs(df_[effect_size]) >= t_logFC) & 
+    (df_['evidence'] <= t_FDR)
+)
+    df_['to_annotate'] = False
+    genes_to_annotate = set(get_genes_to_annotate_plot(df_, evidence, effect_size, n))
+    genes_to_annotate |= set(df_.loc[df_['is_significant_tf']].index)  
+    df_['to_annotate'] = df_.index.isin(genes_to_annotate)
+    df_[evidence] = -np.log10(df_[evidence]+pseudocount)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    plu.scatter(df_.query('type == "other"'), effect_size, evidence,  color='darkgrey', size=s, ax=ax)
+    plu.scatter(df_.query('type == "up"'), effect_size, evidence,  color='red', size=s*2, ax=ax)
+    plu.scatter(df_.query('type == "down"'), effect_size, evidence,  color='b', size=s*2, ax=ax)
+
+    ax.set(xlim=xlim)
+
+    if lines:
+        ax.vlines(1, df_[evidence].min(), df_[evidence].max(), colors='r')
+        ax.vlines(-1, df_[evidence].min(), df_[evidence].max(), colors='b')
+        ax.hlines(-np.log10(0.1), xlim[0], xlim[1], colors='k')
+
+    plu.format_ax(ax, title=title, xlabel=f'log2FC', ylabel=f'-log10(FDR)')
+    ax.spines[['top', 'right']].set_visible(False)
+
+    if annotate:
+        highlight_mask = df_['to_annotate'] & df_['is_significant_tf']
+        # normal_mask = df_['to_annotate'] & (~df_['is_significant_tf'])
+
+        # ta.allocate_text(
+        #     fig, ax,
+        #     df_.loc[normal_mask, effect_size],
+        #     df_.loc[normal_mask, evidence],
+        #     df_.loc[normal_mask].index,
+        #     x_scatter=df_[effect_size], y_scatter=df_[evidence],
+        #     linecolor='black', textsize=8,
+        #     max_distance=max_distance, linewidth=0.5, nbr_candidates=5
+        # )
+
+        ta.allocate_text(
+            fig, ax,
+            df_.loc[highlight_mask, effect_size],
+            df_.loc[highlight_mask, evidence],
+            df_.loc[highlight_mask].index,
+            x_scatter=df_[effect_size], y_scatter=df_[evidence],
+            linecolor='red', textsize=10, textcolor='red',
+            max_distance=max_distance, linewidth=0.5, nbr_candidates=100
+        )
+
+    return fig
+
+
 all_degs['comparison'].unique()
+df_fixed= all_degs.copy()
+df_fixed['evidence'] = all_degs['evidence'].replace(0, 1e-50)
+df_fixed['evidence'] = df_fixed['evidence'].clip(lower=1e-50)
+fig = volcano_plot_plot(
+    df_fixed.query('comparison=="PT_m_vs_lung"'), effect_size='effect_size', evidence='evidence',
+    n=30, annotate=True, xlim=(-2.5, 2.5),pseudocount=1e-50, title = "PT vs lung"
+)
+fig.tight_layout()
+fig.savefig(os.path.join(path_results,"volcano_scanpy_score_norm_PT_vs_lung_tfselected.png"),dpi=300)
+plt.close()
+
+signi = df_fixed.query('comparison=="PT_m_vs_lung"')
+matched_row= signi.loc[signi.index.intersection(present_tf)]
+
+#violin plot 
+for tf in present_tf:
+    adata_sc.obs[f'{tf}_score'] = adata_sc[:,tf].X.toarray().flatten()
+
+#violin function
+def violin(
+    df: pd.DataFrame, 
+    x: str, 
+    y: str, 
+    by: str = None, 
+    color: str = None,
+    categorical_cmap: str|Dict[str,Any] = 'tab10', 
+    x_order: Iterable[str] = None,
+    add_stats: bool = False,
+    pairs: Iterable[Iterable[str]] = None, 
+    by_order: Iterable[str] = None,
+    linewidth: float|str = .5, 
+    ax: matplotlib.axes.Axes = None, 
+    kwargs: Dict[str,Any] = {}
+    ) -> matplotlib.axes.Axes:
+
+    params = {   
+        'inner' : 'quart'
+    }    
+    params = plu.update_params(params, kwargs)
+
+    # Handle colors and by
+    if by is None:
+        sns.violinplot(
+            data=df, x=x, y=y, ax=ax, 
+            order=x_order, 
+            color=color,
+            linewidth=linewidth, 
+            **params
+        )
+        
+    elif by is not None and by in df.columns:
+        # Categorical
+        if pd.api.types.is_string_dtype(df[by]) or df[by].dtype == 'category':
+            
+            if isinstance(categorical_cmap, str):
+                _cmap = plu.create_palette(df, by, palette=categorical_cmap)
+            else:
+                _cmap = categorical_cmap
+
+            assert all([ x in _cmap for x in df[by].unique() ])
+            sns.violinplot(
+                data=df, x=x, y=y, ax=ax, 
+                order=x_order, 
+                dodge=True,
+                hue=by, hue_order=by_order, palette=_cmap,
+                linewidth=linewidth, 
+                **params
+            )
+            ax.get_legend().remove()
+
+        else:
+            raise ValueError(f'{by} must be categorical or string!')
+    
+    else:
+        raise KeyError(f'{by} not in df.columns!')
+
+    if add_stats:
+        plu.add_wilcox(df, x, y, pairs, ax, order=x_order)
+
+    return ax
+
+
+plu.set_rcParams()
+
+# Optional override for larger fonts
+plt.rcParams.update({
+    'font.size': 14,
+    'axes.titlesize': 16,
+    'axes.labelsize': 14,
+    'xtick.labelsize': 12,
+    'ytick.labelsize': 12,
+    'legend.fontsize': 12
+})
+#Here we go
+order= ['PT','lung','CTC']
+for tf in present_tf:
+    for col in adata_sc.obs.columns:
+        if col == f'{tf}_score':
+            fig = plt.figure(figsize=(10, 6))
+            ax = fig.add_subplot(111)
+
+            pairs = [
+                ['PT', 'CTC'],
+                ['lung', 'CTC'],
+                ['PT', 'lung']
+            ]
+
+            violin(
+                df=adata_sc.obs,
+                x='origin',
+                y=f'{tf}_score',   
+                ax=ax,
+                add_stats=True,
+                pairs=pairs,
+                x_order=order,
+                linewidth=0.5
+            )
+
+
+            plu.format_ax(ax, title=f'{tf} scores', 
+            xticks=order, ylabel='Score', reduced_spines=True)
+            fig.tight_layout()
+            fig.savefig(os.path.join(path_results, f'{tf}_violin.png'), dpi=400)
+
+
+#UMAPS
+for tf in present_tf:
+    adata.obs[f'{tf}_score'] = adata_sc[:,tf].X.toarray().flatten()
+
+#here we go
+fig, ax = plt.subplots(figsize=(5, 5.5))
+sc.pl.umap(adata, color='origin', cmap='viridis', vmin=0, show=False,size= 5, ax=ax)
+plt.savefig(os.path.join(path_results,"umap_origin.png"), dpi=300, bbox_inches='tight')
+plt.close(fig)
+
+for tf in present_tf:
+    for col in adata.obs.columns:
+        if col ==f'{tf}_score':
+            fig, ax= plt.subplots(figsize=(5, 5.5))  
+            sc.pl.umap(adata, color=f'{tf}_score', cmap='viridis', vmin=-3, vmax=2,show=False,size=5,ax=ax)
+            plt.show()
+            plt.savefig(os.path.join(path_results,f"umap_{tf}.png"), dpi=300, bbox_inches='tight')
+            plt.close()
+
 
