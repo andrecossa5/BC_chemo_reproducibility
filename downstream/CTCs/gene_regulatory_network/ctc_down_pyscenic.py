@@ -1,5 +1,6 @@
 """
 Script to analyze pyscenic results CTC
+Scoring used scanpy_score normalized
 """
 
 import os
@@ -92,17 +93,8 @@ def calculate_percent_cells_for_regulons(adata_auc):
 
 calculate_percent_cells_for_regulons(adata_auc)
 
-#add highly_variable_features
-highly_variable_features = adata.var['highly_variable_features']
-regulon_to_gene_mapping = {}  
-for regulon_name in adata_auc.var.index:
-    gene_name = regulon_name  
-    regulon_to_gene_mapping[regulon_name] = gene_name
-
-adata_auc.var['highly_variable_features'] = [
-    highly_variable_features.get(regulon_to_gene_mapping[regulon], False)  
-    for regulon in adata_auc.var.index
-]
+#put all regulons as highly_variable_features
+adata_auc.var['highly_variable_features'] = adata_auc.var['regulon']
 
 # add layer RAW 
 adata_auc.layers['raw'] = adata_auc.X
@@ -155,6 +147,7 @@ if isinstance(metadata.get('regulonThresholds', None), list):
             'motif_data': motif_data
         }
 
+
 #save d_reg
 rows = []
 for tf, data in d_reg.items():
@@ -169,6 +162,7 @@ for tf, data in d_reg.items():
 
 df = pd.DataFrame(rows)
 df.to_csv(os.path.join(path_results,'ctc_regulon_data.csv'), index=False)
+
 
 #re-score values 
 regulon_name = list(d_reg.keys())
@@ -202,13 +196,14 @@ plt.savefig(os.path.join(path_results, "distribution_scanpyscores.png"), dpi=300
 
 #normalized scanpy score 
 Z = adata_sc.X
-
+Z = adata_auc.X
 if sparse.issparse(Z):
     Z = Z.toarray()
 
 X_zscored= (Z - Z.mean(axis=0))/ Z.std(axis=0)
 
 adata_sc.X = csr_matrix(X_zscored)
+adata_auc.X = csr_matrix(X_zscored)
 #adata_sc.write_h5ad(os.path.join(path_data,'clustered_norm.h5ad'))
 X_dense= adata_sc.X.toarray()
 
@@ -267,7 +262,7 @@ D = Dist_features(adata_sc, contrasts, jobs=jobs)
 D.run_all_jobs()
 
 dfs = []
-categories= ['pt_ctc','lung_ctc','pt_lung']
+categories= ['pt_ctc','lung_ctc','pt_lung','ctc_pt/lung']
 
 for cat in categories:
     key = f"{cat}|genes|wilcoxon"
@@ -294,7 +289,7 @@ def get_genes_to_annotate_plot(df_, evidence, effect_size, n):
 
 def volcano_plot_plot(
     df, effect_size='effect_size', evidence='evidence',
-    t_logFC=1, t_FDR=.1, n=10, title=None, xlim=(-8,8), max_distance=0.5, pseudocount=0,
+    t_logFC=0.5, t_FDR=.1, n=10, title=None, xlim=(-8,8), max_distance=0.5, pseudocount=0,
     figsize=(5,5), annotate=False, s=5, lines=False
     ):
     """
@@ -336,7 +331,7 @@ def volcano_plot_plot(
 
     if annotate:
         highlight_mask = df_['to_annotate'] & df_['is_significant_tf']
-        # normal_mask = df_['to_annotate'] & (~df_['is_significant_tf'])
+        normal_mask = df_['to_annotate'] & (~df_['is_significant_tf'])
 
         # ta.allocate_text(
         #     fig, ax,
@@ -345,7 +340,7 @@ def volcano_plot_plot(
         #     df_.loc[normal_mask].index,
         #     x_scatter=df_[effect_size], y_scatter=df_[evidence],
         #     linecolor='black', textsize=8,
-        #     max_distance=max_distance, linewidth=0.5, nbr_candidates=5
+        #     max_distance=max_distance, linewidth=0.5, nbr_candidates=100
         # )
 
         ta.allocate_text(
@@ -354,31 +349,82 @@ def volcano_plot_plot(
             df_.loc[highlight_mask, evidence],
             df_.loc[highlight_mask].index,
             x_scatter=df_[effect_size], y_scatter=df_[evidence],
-            linecolor='red', textsize=10, textcolor='red',
+            linecolor='blue', textsize=10, textcolor='blue',
             max_distance=max_distance, linewidth=0.5, nbr_candidates=100
         )
 
     return fig
 
 
+def volcano_plot_plot_classic(
+    df, effect_size='effect_size', evidence='evidence',
+    t_logFC=0.5, t_FDR=.1, n=10, title=None, xlim=(-8,8), max_distance=0.5, pseudocount=0,
+    figsize=(5,5), annotate=False, s=5, lines=False
+    ):
+    """
+    Volcano plot
+    """    
+
+    df_ = df.copy()    
+    choices = [
+        (df_[effect_size] >= t_logFC) & (df_[evidence] <= t_FDR),
+        (df_[effect_size] <= -t_logFC) & (df_[evidence] <= t_FDR),
+    ]
+    df_['type'] = np.select(choices, ['up', 'down'], default='other')
+    df_['to_annotate'] = False
+    #genes_to_annotate = get_genes_to_annotate_plot(df_, evidence, effect_size, n) ##original
+    genes_to_annotate = get_genes_to_annotate_plot(df_.query('type== "up"'), evidence, effect_size,n)
+    df_.loc[genes_to_annotate, 'to_annotate'] = True
+    df_[evidence] = -np.log10(df_[evidence]+pseudocount)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    plu.scatter(df_.query('type == "other"'), effect_size, evidence,  color='darkgrey', size=s, ax=ax)
+    plu.scatter(df_.query('type == "up"'), effect_size, evidence,  color='red', size=s*2, ax=ax)
+    plu.scatter(df_.query('type == "down"'), effect_size, evidence,  color='b', size=s*2, ax=ax)
+
+    ax.set(xlim=xlim)
+
+    if lines:
+        ax.vlines(1, df_[evidence].min(), df_[evidence].max(), colors='r')
+        ax.vlines(-1, df_[evidence].min(), df_[evidence].max(), colors='b')
+        ax.hlines(-np.log10(0.1), xlim[0], xlim[1], colors='k')
+
+    plu.format_ax(ax, title=title, xlabel=f'log2FC', ylabel=f'-log10(FDR)')
+    ax.spines[['top', 'right']].set_visible(False)
+
+    if annotate:
+        ta.allocate_text(
+            fig, ax, 
+            df_.loc[lambda x: x['to_annotate']][effect_size],
+            df_.loc[lambda x: x['to_annotate']][evidence],
+            df_.loc[lambda x: x['to_annotate']].index,
+            x_scatter=df_[effect_size], y_scatter=df_[evidence], 
+            linecolor='black', textsize=8, 
+            max_distance=max_distance, linewidth=0.5, nbr_candidates=25
+        )
+
+    return fig
+
+all_degs= pd.read_csv(os.path.join(path_data, 'PT_CTC_DEGs.csv')).set_index('regulon')
 all_degs['comparison'].unique()
 df_fixed= all_degs.copy()
 df_fixed['evidence'] = all_degs['evidence'].replace(0, 1e-50)
 df_fixed['evidence'] = df_fixed['evidence'].clip(lower=1e-50)
-fig = volcano_plot_plot(
-    df_fixed.query('comparison=="PT_m_vs_lung"'), effect_size='effect_size', evidence='evidence',
-    n=30, annotate=True, xlim=(-2.5, 2.5),pseudocount=1e-50, title = "PT vs lung"
+fig = volcano_plot_plot_classic(
+    df_fixed.query('comparison=="CTC_db_vs_PT_lung"'), effect_size='effect_size', evidence='evidence',
+    n=30, annotate=True, xlim=(-2.5, 2.5),pseudocount=1e-50, title = "CTC vs PT/lung"
 )
 fig.tight_layout()
-fig.savefig(os.path.join(path_results,"volcano_scanpy_score_norm_PT_vs_lung_tfselected.png"),dpi=300)
+fig.savefig(os.path.join(path_results,"volcano_CTC_vs_PTlung.png"),dpi=300)
 plt.close()
 
-signi = df_fixed.query('comparison=="PT_m_vs_lung"')
+signi = df_fixed.query('comparison=="CTC_vs_lung_mt"')[:40]
 matched_row= signi.loc[signi.index.intersection(present_tf)]
+
 
 #violin plot 
 for tf in present_tf:
-    adata_sc.obs[f'{tf}_score'] = adata_sc[:,tf].X.toarray().flatten()
+    adata_auc.obs[f'{tf}_score'] = adata_auc[:,tf].X.toarray().flatten()
 
 #violin function
 def violin(
@@ -458,7 +504,7 @@ plt.rcParams.update({
 #Here we go
 order= ['PT','lung','CTC']
 for tf in present_tf:
-    for col in adata_sc.obs.columns:
+    for col in adata_auc.obs.columns:
         if col == f'{tf}_score':
             fig = plt.figure(figsize=(10, 6))
             ax = fig.add_subplot(111)
@@ -489,7 +535,7 @@ for tf in present_tf:
 
 #UMAPS
 for tf in present_tf:
-    adata.obs[f'{tf}_score'] = adata_sc[:,tf].X.toarray().flatten()
+    adata.obs[f'{tf}_score'] = adata_auc[:,tf].X.toarray().flatten()
 
 #here we go
 fig, ax = plt.subplots(figsize=(5, 5.5))
@@ -499,11 +545,60 @@ plt.close(fig)
 
 for tf in present_tf:
     for col in adata.obs.columns:
-        if col ==f'{tf}_score':
+        if col == f'{tf}_score':
             fig, ax= plt.subplots(figsize=(5, 5.5))  
             sc.pl.umap(adata, color=f'{tf}_score', cmap='viridis', vmin=-3, vmax=2,show=False,size=5,ax=ax)
-            plt.show()
             plt.savefig(os.path.join(path_results,f"umap_{tf}.png"), dpi=300, bbox_inches='tight')
             plt.close()
 
+#Violin CTC up regulons for log2FC > 0.5
+all_degs['comparison'].unique()
+tf_to_plot= all_degs.query('comparison == "CTC_pt_vs_PT"')[:7].index.tolist()
+for tf in tf_to_plot: 
+    adata_sc.obs[f'{tf}_score'] = adata_sc[:, tf].X.toarray().flatten()
+
+order= ['PT','lung','CTC']
+for tf in tf_to_plot:
+    for col in adata_sc.obs.columns: 
+        if col == f'{tf}_score':
+            fig = plt.figure(figsize=(10,6))
+            ax = fig.add_subplot(111)
+
+            pairs = [
+                ['PT', 'CTC'],
+                ['lung', 'CTC'],
+                ['PT', 'lung']
+            ]
+ 
+            violin(
+                df = adata_sc.obs,
+                x = 'origin',
+                y = f'{tf}_score',
+                ax=ax,
+                add_stats=True,
+                pairs=pairs,
+                x_order=order,
+                linewidth=0.5
+            )
+
+            plu.format_ax(ax, title=f'{tf}_score', xticks= order,
+                          ylabel='Score', reduced_spines=True)
+            fig.tight_layout()
+            fig.savefig(os.path.join(path_results, f'{tf}_violin0.5.png'), dpi=400)
+
+
+#list TF up in CTC + associated genes
+d_sub = {}
+tf_to_plot = pd.Index(tf_to_plot) + "(+)"
+for tf in tf_to_plot:
+    if tf in d_reg.keys():
+        d_sub[tf] = {
+            'gene_set': d_reg[tf]['gene_set']
+        }
+df = pd.DataFrame({
+    'TF': [ tf for tf in d_sub.keys()],
+    'Genes': [', '.join(d_sub[tf]['gene_set']) for tf in d_sub.keys()]
+})
+
+df.to_csv(os.path.join(path_data, 'TF_+_associated_genes.csv'), index=False)
 
