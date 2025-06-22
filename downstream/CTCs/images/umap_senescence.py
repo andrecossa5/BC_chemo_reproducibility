@@ -331,12 +331,7 @@ import scanpy as sc
 import matplotlib.colors as clr
 hUSI = cal_hUSI(adata)
 adata.obs['hUSI'] = hUSI
-sc.pp.highly_variable_genes(adata,n_top_genes=2000)
 adata.raw = adata.copy()
-adata = adata[:,adata.var.highly_variable]
-sc.pp.pca(adata,n_comps=15)
-sc.pp.neighbors(adata)
-sc.tl.tsne(adata)
 color_self = clr.LinearSegmentedColormap.from_list('pink_grey', ['#3AB370',"#EAE7CC","#FD1593"], N=256)
 sc.pl.tsne(adata,color='hUSI',save='Python_demo_hUSI.png',size=30,cmap = color_self)
 
