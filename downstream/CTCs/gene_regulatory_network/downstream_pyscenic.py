@@ -409,7 +409,7 @@ adata_mp.obs['THRB_score_promet_NT'] = adata_mp.obs.apply(
     lambda row: row['THRB_score'] if pd.notnull(row['promet_NT']) else np.nan,
     axis=1
 )
-
+adata_mp.obs
 #save umap
 plt.figure(figsize=(6, 6))  
 sc.pl.umap(adata_mp, color='comparison', cmap='viridis', vmin=0, show=False)
@@ -423,6 +423,23 @@ plt.savefig(os.path.join(path_results,"umap_THRB.png"), dpi=300, bbox_inches='ti
 plt.close()
 
 
+#UMAP for each comparison
+colors = sns.color_palette('tab10', n_colors=len(adata_mp.obs['comparison'].cat.categories))
+plt.rcParams['figure.figsize'] = (5, 5.5)  
+for i, cond in enumerate(adata_mp.obs['comparison'].cat.categories):
+    figs = sc.pl.umap(
+        adata_mp, 
+        color='comparison',
+        groups=[cond],               
+        palette=[colors[i]], 
+        size=6,         
+        title=f"{cond}",
+        show=False,
+        return_fig=True    
+    )
+    fig = figs[0] if isinstance(figs, list) else figs
+    fig.savefig(os.path.join(path_results, f"umap_comparison_{cond}.png"), dpi=500, bbox_inches='tight')
+    plt.close(fig)
 
 #re-score values 
 regulon_name = list(d_reg.keys())
@@ -1044,4 +1061,3 @@ for gene in d_paep:
     fig.savefig(os.path.join(path_results, f'Boxplot_shPAEP_regulon_mean_expr_{gene}.png'), dpi=300)
 
 
-#senescence signatures 
