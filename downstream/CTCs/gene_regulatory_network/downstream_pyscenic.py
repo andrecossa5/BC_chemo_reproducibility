@@ -441,6 +441,35 @@ for i, cond in enumerate(adata_mp.obs['comparison'].cat.categories):
     fig.savefig(os.path.join(path_results, f"umap_comparison_{cond}.png"), dpi=500, bbox_inches='tight')
     plt.close(fig)
 
+
+adata_temp = adata.copy()
+import numpy as np
+# Make a new column for plotting: PAEP expression in nonpro_AC, NaN elsewhere
+adata_temp.obs["PAEP_nonpro_AC"] = np.where(
+    adata_temp.obs["comparison"] == "nonpro_AC",
+    adata_temp[:, "PAEP"].X.toarray().flatten() if hasattr(adata_temp[:, "PAEP"].X, "toarray") else adata_temp[:, "PAEP"].X.flatten(),
+    np.nan
+)
+
+# Plot: grey for NaN cells, expression colors for nonpro_AC
+plt.rcParams["figure.figsize"] = (5, 5.5)
+fig = sc.pl.umap(
+    adata_temp,
+    color="PAEP_nonpro_AC",
+    title="Expression of PAEP in nonpro_AC",
+    na_color="lightgrey",
+    size=6,  # this sets other cells to grey
+    show=False,
+    return_fig=True
+)
+
+# Save figure if needed
+fig = fig[0] if isinstance(fig, list) else fig
+fig.savefig(os.path.join(path_results, "umap_PAEP_nonpro_AC.png"), dpi=500, bbox_inches="tight")
+plt.close(fig)
+
+
+
 #re-score values 
 regulon_name = list(d_reg.keys())
 n_cells= adata.n_obs
