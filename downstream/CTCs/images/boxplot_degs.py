@@ -63,14 +63,13 @@ order = ['nonpro_NT','nonpro_AC','promet_NT','promet_AC']
 
 plu.box(df_bulk,
     x='comparison', y='mean_expr', ax=ax, color='grey', add_stats=True, 
-    pairs=[['promet_NT','nonpro_AC'],['promet_NT','promet_AC'],['nonpro_AC','promet_AC'],['nonpro_NT','promet_AC'],
-           ['nonpro_NT','nonpro_AC'], ['nonpro_NT','promet_NT']], 
+    pairs=[['nonpro_NT','promet_NT'],['nonpro_AC','promet_AC'],['nonpro_AC','nonpro_NT']], 
     x_order=order
 )
 plu.strip(df_bulk, x='comparison', y='mean_expr', ax=ax, color='k', x_order=order)
 plu.format_ax(ax=ax, title='Mean expression of 52 glycolysis genes', rotx=90, reduced_spines=True)
 fig.tight_layout()
-fig.savefig(os.path.join(path_results, f'Boxplot_52_glycolisis_mean_expr.png'), dpi=300)
+fig.savefig(os.path.join(path_results, f'Boxplot_52_glycolisis_mean_expr_new.png'), dpi=300)
 
 
 #2 boxplot : 13 hypoxia common and 134 non-redundant in three condition (promet_NT, nonpro_AC, promet_AC)
@@ -226,13 +225,13 @@ order = ['nonpro_NT','nonpro_AC','promet_NT','promet_AC']
 
 plu.box(df_bulk,
     x='comparison', y='mito_mean_expr', ax=ax, color='grey', add_stats=True, 
-    pairs=[['promet_NT','nonpro_AC'],['promet_NT','promet_AC'],['nonpro_AC','promet_AC'],['nonpro_NT','nonpro_AC'],['nonpro_NT','promet_NT'],['nonpro_NT','promet_AC']], 
+    pairs=[['nonpro_NT','promet_NT'],['nonpro_AC','promet_AC'],['nonpro_AC','nonpro_NT']], 
     x_order=order
 )
 plu.strip(df_bulk, x='comparison', y='mito_mean_expr', ax=ax, color='k', x_order=order)
 plu.format_ax(ax=ax, title='Mean expr of 220 promet_AC mitochondrial genes', ylabel='mean', rotx=90, reduced_spines=True)
 fig.tight_layout()
-fig.savefig(os.path.join(path_results, f'Boxplot_220_mitochondrial_sample.png'), dpi=300)
+fig.savefig(os.path.join(path_results, f'Boxplot_220_mitochondrial_sample_new.png'), dpi=300)
 
 #Inflammation 29 promet_NT 
 genes_29_inf = inf['Genes'].tolist()
@@ -251,13 +250,13 @@ order = ['nonpro_NT','nonpro_AC','promet_NT','promet_AC']
 
 plu.box(df_bulk,
     x='comparison', y='inf_mean_expr', ax=ax, color='grey', add_stats=True, 
-    pairs=[['promet_NT','nonpro_AC'],['promet_NT','promet_AC'],['nonpro_AC','promet_AC'],['nonpro_NT','nonpro_AC'],['nonpro_NT','promet_NT'],['nonpro_NT','promet_AC']], 
+    pairs=[['nonpro_NT','promet_NT'],['nonpro_AC','promet_AC'],['nonpro_AC','nonpro_NT']], 
     x_order=order
 )
 plu.strip(df_bulk, x='comparison', y='inf_mean_expr', ax=ax, color='k', x_order=order)
 plu.format_ax(ax=ax, title='Mean expression of 29 inflammation genes', ylabel='mean', rotx=90, reduced_spines=True)
 fig.tight_layout()
-fig.savefig(os.path.join(path_results, f'Boxplot_29_inf_sample.png'), dpi=300)
+fig.savefig(os.path.join(path_results, f'Boxplot_29_inf_sample_new.png'), dpi=300)
 
 #Inflammation 115 common (promet_AC & nonpro_AC)
 genes_115_inf = inf_ds['Genes'].tolist()
@@ -357,13 +356,13 @@ order = ['nonpro_NT','nonpro_AC','promet_NT','promet_AC']
 
 plu.box(df_bulk,
     x='comparison', y='mean_expr', ax=ax, color='grey', add_stats=True, 
-    pairs=[['promet_NT','nonpro_AC'],['promet_NT','promet_AC'],['nonpro_AC','promet_AC'],['nonpro_NT','nonpro_AC'],['nonpro_NT','promet_NT'],['nonpro_NT','promet_AC']], 
+    pairs=[['nonpro_NT','promet_NT'],['nonpro_AC','promet_AC'],['nonpro_AC','nonpro_NT']], 
     x_order=order
 )
 plu.strip(df_bulk, x='comparison', y='mean_expr', ax=ax, color='k', x_order=order)
 plu.format_ax(ax=ax, title='Mean expression of 16 Hypoxia stress genes', ylabel='mean', rotx=90, reduced_spines=True)
 fig.tight_layout()
-fig.savefig(os.path.join(path_results, f'Boxplot_16_hypoxia_stress_sample.png'), dpi=300)
+fig.savefig(os.path.join(path_results, f'Boxplot_16_hypoxia_stress_sample_new.png'), dpi=300)
 
 #stress : Inflammatory 
 inf_ss_genes = inf_ss['Gene'].tolist()
@@ -432,14 +431,13 @@ order = ['nonpro_NT','nonpro_AC','promet_NT','promet_AC']
 
 plu.box(df_bulk,
     x='comparison', y='mean_expr', ax=ax, color='grey', add_stats=True, 
-    pairs=[['promet_NT','nonpro_AC'],['promet_NT','promet_AC'],['nonpro_AC','promet_AC'],['nonpro_NT','promet_NT'],['nonpro_NT','promet_AC'],
-           ['nonpro_NT','nonpro_AC']], 
+    pairs=[['nonpro_NT','promet_NT'],['nonpro_AC','promet_AC'],['nonpro_AC','nonpro_NT']], 
     x_order=order
 )
 plu.strip(df_bulk, x='comparison', y='mean_expr', ax=ax, color='k', x_order=order)
 plu.format_ax(ax=ax, title='Mean expression of 24 Mitotic stress genes', ylabel='mean', rotx=90, reduced_spines=True)
 fig.tight_layout()
-fig.savefig(os.path.join(path_results, f'Boxplot_24_mitotic_stress_sample.png'), dpi=300)
+fig.savefig(os.path.join(path_results, f'Boxplot_24_mitotic_stress_sample_new.png'), dpi=300)
 
 #stress: nutrient 
 nut_genes = ['SLC38A1','SLC7A1','EIF4EBP1','LAMTOR5']
